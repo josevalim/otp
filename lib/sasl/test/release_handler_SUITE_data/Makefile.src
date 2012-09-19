@@ -62,6 +62,11 @@ APP= \
      app1_app2/lib4/app1-4.0/ebin/app1_server.@EMULATOR@ \
      app1_app2/lib4/app1-4.0/ebin/app1.@EMULATOR@
 
+APP_FAULTY= \
+     app_faulty/ebin/app_faulty_sup.@EMULATOR@ \
+     app_faulty/ebin/app_faulty_server.@EMULATOR@ \
+     app_faulty/ebin/app_faulty.@EMULATOR@ \
+
 OTP2740=  \
      otp_2740/vsn_atom.@EMULATOR@ \
      otp_2740/vsn_list.@EMULATOR@ \
@@ -80,7 +85,7 @@ SUP= \
 	 release_handler_timeouts/dummy-0.1/ebin/dummy_sup.@EMULATOR@ \
 	 release_handler_timeouts/dummy-0.1/ebin/dummy_sup_2.@EMULATOR@
 
-all: $(P2B) $(LIB) $(APP) $(OTP2740) $(C) $(SUP)
+all: $(P2B) $(LIB) $(APP) $(APP_FAULTY) $(OTP2740) $(C) $(SUP)
 
 P2B/a-2.0/ebin/a.@EMULATOR@: P2B/a-2.0/src/a.erl
 	erlc $(EFLAGS) -oP2B/a-2.0/ebin P2B/a-2.0/src/a.erl
@@ -170,6 +175,13 @@ lib/many_mods-1.1/ebin/m10.@EMULATOR@: lib/many_mods-1.1/src/m10.erl
 	erlc $(EFLAGS) -olib/many_mods-1.1/ebin lib/many_mods-1.1/src/m10.erl
 lib/many_mods-2.0/ebin/m.@EMULATOR@: lib/many_mods-2.0/src/m.erl
 	erlc $(EFLAGS) -olib/many_mods-2.0/ebin lib/many_mods-2.0/src/m.erl
+
+app_faulty/ebin/app_faulty_server.@EMULATOR@: app_faulty/src/app_faulty_server.erl
+	erlc $(EFLAGS) -oapp_faulty/ebin app_faulty/src/app_faulty_server.erl
+app_faulty/ebin/app_faulty_sup.@EMULATOR@: app_faulty/src/app_faulty_sup.erl
+	erlc $(EFLAGS) -oapp_faulty/ebin app_faulty/src/app_faulty_sup.erl
+app_faulty/ebin/app_faulty.@EMULATOR@: app_faulty/src/app_faulty.erl
+	erlc $(EFLAGS) -oapp_faulty/ebin app_faulty/src/app_faulty.erl
 
 
 app1_app2/lib1/app1-1.0/ebin/app1_sup.@EMULATOR@: app1_app2/lib1/app1-1.0/src/app1_sup.erl

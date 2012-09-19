@@ -63,7 +63,8 @@ cases() ->
      instructions, eval_appup, eval_appup_with_restart,
      supervisor_which_children_timeout,
      release_handler_which_releases, install_release_syntax_check,
-     upgrade_supervisor, upgrade_supervisor_fail, otp_9864].
+     upgrade_supervisor, upgrade_supervisor_fail, otp_9864,
+     faulty_application_start].
 
 groups() ->
     [{release,[],
@@ -1259,6 +1260,29 @@ otp_9864(Conf) ->
 
     ok.
 
+faulty_application_start(Config) when is_list(Config) ->
+
+    %% Set some paths
+    AppDir  = filename:join(?config(data_dir, Config), "app_faulty"),
+    EbinDir = filename:join(AppDir, "ebin"),
+
+    %% Start faulty app
+    code:add_patha(EbinDir),
+
+    % {error,
+    %     {{shutdown,
+    %       {undef,[
+    %         {an_undefined_module_with,an_undefined_function,[argument1,argument2],[]},
+    %         {app_faulty_server,init,1,[{file,"app_faulty/src/app_faulty_server.erl"},{line,16}]},
+    %         {gen_server,init_it,6,[{file,"gen_server.erl"},{line,304}]},
+    %         {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}
+    %     ]}},{app_faulty,start,[normal,[]]}}}
+
+    {error, Error} = application:start(app_faulty),
+    {{shutdown, {undef, CallStack}},{app_faulty,start,_}} = Error,
+    [{an_undefined_module_with,an_undefined_function,_,_}|_] = CallStack,
+    ok = application:unload(app_faulty),
+    ok.
 
 upgrade_supervisor(Conf) when is_list(Conf) ->
     %% Set some paths
