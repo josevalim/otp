@@ -358,7 +358,7 @@ public class OtpEpmd {
     }
 
     public static String[] lookupNames() throws IOException {
-	return lookupNames(InetAddress.getLocalHost());
+       return lookupNames(InetAddress.getByName("localhost"));
     }
 
     public static String[] lookupNames(final InetAddress address)
