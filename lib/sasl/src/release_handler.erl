@@ -494,10 +494,12 @@ find_script(App, Dir, OldVsn, UpOrDown) ->
 			  up -> UpFromScripts;
 			  down -> DownToScripts
 		      end,
-	    case lists:keysearch(OldVsn, 1, Scripts) of
-		{value, {_OldVsn, Script}} ->
+	    case lists:dropwhile(fun({Re,_}) ->
+					 re:run(OldVsn, Re) == nomatch
+				 end, Scripts) of
+		[{_OldVsn, Script}|_] ->
 		    {NewVsn, Script};
-		false ->
+		[] ->
 		    throw({version_not_in_appup, OldVsn})
 	    end;
 	{error, enoent} ->
