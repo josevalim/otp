@@ -209,6 +209,14 @@ file_request({advise,Offset,Length,Advise},
     Reply ->
         {reply,Reply,State}
     end;
+file_request({allocate, NewFileLength},
+         #state{handle = Handle} = State) ->
+    case ?PRIM_FILE:allocate(Handle, NewFileLength) of
+    {error, _} = Reply ->
+        {stop, normal, Reply, State};
+    Reply ->
+        {reply, Reply, State}
+    end;
 file_request({pread,At,Sz}, 
 	     #state{handle=Handle,buf=Buf,read_mode=ReadMode}=State) ->
     case position(Handle, At, Buf) of
