@@ -53,7 +53,8 @@
         <p>Decodes <c>Type</c> from <c>Module</c> from the list of bytes or
           binary <c>Bytes</c>. If the module is compiled with <c>ber_bin</c>
           or <c>per_bin</c> option <c>Bytes</c> must be a binary. 
-          Returns <c>{ok,Value}</c> if successful.</p>
+          Returns <c>{ok,Value}</c> if successful. Returns <c>{error, incomplete}</c>
+          if <c>Bytes</c> is an incomplete ASN.1 packet.</p>
       </desc>
     </func>
 

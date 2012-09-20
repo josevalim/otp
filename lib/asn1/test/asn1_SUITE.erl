@@ -89,6 +89,7 @@ groups() ->
        {group, [], [parse,
                     test_driver_load,
                     test_undecoded_rest,
+                    test_incomplete_packet,
                     test_inline,
                     specialized_decodes,
                     special_decode_performance,
@@ -1013,6 +1014,16 @@ test_undecoded_rest(Config, Rule, Opts) ->
     case Rule of
         ber_bin_v2 -> ok;
         _ -> test_undecoded_rest:test(undec_rest, Config)
+    end.
+
+test_incomplete_packet(Config) -> test(Config, fun test_incomplete_packet/3).
+test_incomplete_packet(Config, Rule, Opts) ->
+    asn1_test_lib:compile("P-Record", Config, [Rule|Opts]),
+    ok = test_incomplete_packet:test([], Config),
+    asn1_test_lib:compile("P-Record", Config, [Rule,undec_rest|Opts]),
+    case Rule of
+        ber_bin_v2 -> ok;
+        _ -> test_incomplete_packet:test(undec_rest, Config)
     end.
 
 test_inline(Config) ->

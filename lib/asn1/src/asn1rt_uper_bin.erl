@@ -177,12 +177,23 @@ getoptionals2(Bytes,NumOpt) ->
 %% BinBits = binary(),
 %% RestBytes = tuple()
 getbits_as_binary(Num,Bytes) when is_bitstring(Bytes) ->
-    <<BS:Num/bitstring,Rest/bitstring>> = Bytes,
-    {BS,Rest}.
+    try
+        <<BS:Num/bitstring,Rest/bitstring>> = Bytes,
+        {BS,Rest}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
 
 getbits_as_list(Num,Bytes) when is_bitstring(Bytes) ->
-    <<BitStr:Num/bitstring,Rest/bitstring>> = Bytes,
-    {[ B || <<B:1>> <= BitStr],Rest}.
+    try
+        <<BitStr:Num/bitstring,Rest/bitstring>> = Bytes,
+        {[ B || <<B:1>> <= BitStr],Rest}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
+
+getbit(<<>>) ->
+    throw({error,incomplete});
 
 getbit(Buffer) ->
     <<B:1,Rest/bitstring>> = Buffer,
@@ -190,22 +201,33 @@ getbit(Buffer) ->
 
 
 getbits(Buffer,Num) when is_bitstring(Buffer) ->
-    <<Bs:Num,Rest/bitstring>> = Buffer,
-    {Bs,Rest}.
-
+    try
+        <<Bs:Num,Rest/bitstring>> = Buffer,
+        {Bs,Rest}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
 
 
 %% Pick the first Num octets.
 %% Returns octets as an integer with bit significance as in buffer.
 getoctets(Buffer,Num) when is_bitstring(Buffer) ->
-    <<Val:Num/integer-unit:8,RestBitStr/bitstring>> = Buffer,
-    {Val,RestBitStr}.
+    try
+        <<Val:Num/integer-unit:8,RestBitStr/bitstring>> = Buffer,
+        {Val,RestBitStr}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
 
 %% Pick the first Num octets.
 %% Returns octets as a binary
 getoctets_as_bin(Bin,Num) when is_bitstring(Bin) ->
-    <<Octets:Num/binary,RestBin/bitstring>> = Bin,
-    {Octets,RestBin}.
+    try
+        <<Octets:Num/binary,RestBin/bitstring>> = Bin,
+        {Octets,RestBin}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
 
 %% same as above but returns octets as a List
 getoctets_as_list(Buffer,Num) ->
@@ -265,11 +287,18 @@ set_choice_tag(_Alt,[],_Tag) ->
 %% If the buffer is not aligned, this function does that.
 decode_fragmented_bits(Buffer,C) ->
     decode_fragmented_bits(Buffer,C,[]).
+
+decode_fragmented_bits(<<>>,_C,[]) ->
+    throw({error, incomplete});
 decode_fragmented_bits(<<3:2,Len:6,BitStr/bitstring>>,C,Acc) ->
 %%    {Value,Bin2} = split_binary(Bin, Len * ?'16K'),
     FragLen = (Len*?'16K') div 8,
-    <<Value:FragLen/binary,BitStr2/bitstring>> = BitStr,
-    decode_fragmented_bits(BitStr2,C,[Value|Acc]);
+    try
+        <<Value:FragLen/binary,BitStr2/bitstring>> = BitStr,
+        decode_fragmented_bits(BitStr2,C,[Value|Acc])
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end;
 decode_fragmented_bits(<<0:1,0:7,BitStr/bitstring>>,C,Acc) ->
     BinBits = list_to_binary(lists:reverse(Acc)),
     case C of
@@ -279,24 +308,34 @@ decode_fragmented_bits(<<0:1,0:7,BitStr/bitstring>>,C,Acc) ->
 	    exit({error,{asn1,{illegal_value,C,BinBits}}})
     end;
 decode_fragmented_bits(<<0:1,Len:7,BitStr/bitstring>>,C,Acc) ->
-    <<Val:Len/bitstring,Rest/bitstring>> = BitStr,
+    try
+        <<Val:Len/bitstring,Rest/bitstring>> = BitStr,
 %%    <<Value:Len/binary-unit:1,Bin2/binary>> = Bin,
-    ResBitStr = list_to_bitstring(lists:reverse([Val|Acc])),
-    case C of
-	Int when is_integer(Int),C == bit_size(ResBitStr) ->
-	    {ResBitStr,Rest};
-	Int when is_integer(Int) ->
-	    exit({error,{asn1,{illegal_value,C,ResBitStr}}})
+        ResBitStr = list_to_bitstring(lists:reverse([Val|Acc])),
+        case C of
+	    Int when is_integer(Int),C == bit_size(ResBitStr) ->
+	        {ResBitStr,Rest};
+	    Int when is_integer(Int) ->
+	        exit({error,{asn1,{illegal_value,C,ResBitStr}}})
+    end
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
     end.
 
 
 decode_fragmented_octets({0,Bin},C) ->
     decode_fragmented_octets(Bin,C,[]).
 
+decode_fragmented_octets(Bin,_C,[]) when bit_size(Bin) < 8->
+    throw({error, incomplete});
 decode_fragmented_octets(<<3:2,Len:6,BitStr/bitstring>>,C,Acc) ->
     FragLen = Len * ?'16K',
-    <<Value:FragLen/binary,Rest/bitstring>> = BitStr,
-    decode_fragmented_octets(Rest,C,[Value|Acc]);
+    try
+        <<Value:FragLen/binary,Rest/bitstring>> = BitStr,
+        decode_fragmented_octets(Rest,C,[Value|Acc])
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end;
 decode_fragmented_octets(<<0:1,0:7,Bin/bitstring>>,C,Acc) ->
     Octets = list_to_binary(lists:reverse(Acc)),
     case C of
@@ -306,13 +345,17 @@ decode_fragmented_octets(<<0:1,0:7,Bin/bitstring>>,C,Acc) ->
 	    exit({error,{asn1,{illegal_value,C,Octets}}})
     end;
 decode_fragmented_octets(<<0:1,Len:7,BitStr/bitstring>>,C,Acc) ->
-    <<Value:Len/binary-unit:8,BitStr2/binary>> = BitStr,
-    BinOctets = list_to_binary(lists:reverse([Value|Acc])),
-    case C of
-	Int when is_integer(Int),size(BinOctets) == Int ->
-	    {BinOctets,BitStr2};
-	Int when is_integer(Int) ->
-	    exit({error,{asn1,{illegal_value,C,BinOctets}}})
+    try
+        <<Value:Len/binary-unit:8,BitStr2/binary>> = BitStr,
+        BinOctets = list_to_binary(lists:reverse([Value|Acc])),
+        case C of
+	    Int when is_integer(Int),size(BinOctets) == Int ->
+	        {BinOctets,BitStr2};
+	    Int when is_integer(Int) ->
+	        exit({error,{asn1,{illegal_value,C,BinOctets}}})
+    end
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
     end.
 
 
@@ -571,13 +614,17 @@ decode_unconstrained_number(Bytes) ->
     {Ints,Bytes3} = getoctets_as_bin(Bytes2,Len),
     {dec_integer(Ints),Bytes3}.
 
+dec_integer(Bin) when bit_size(Bin) < 8->
+    throw({error, incomplete});
 dec_integer(Bin = <<0:1,_:7,_/bitstring>>) ->  
     decpint(Bin);
 dec_integer(<<_:1,B:7,BitStr/bitstring>>) ->
     Size = bit_size(BitStr),
     <<I:Size>> = BitStr,
     (-128 + B) bsl bit_size(BitStr) bor I.
-    
+
+decpint(<<>>) ->
+    throw({error, incomplete});
 decpint(Bin) ->
     Size = bit_size(Bin),
     <<Int:Size>> = Bin,
@@ -642,6 +689,10 @@ decode_length(<<2:2,Val:14,Rest/bitstring>>,undefined)  ->
     {Val,Rest};
 decode_length(<<3:2,_:14,_Rest/bitstring>>,undefined)  ->
     exit({error,{asn1,{decode_length,{nyi,above_16k}}}});
+decode_length(Buffer, undefined) when bit_size(Buffer) < 8 ->
+    throw({error, incomplete});
+decode_length(<<1:1,Rest/bitstring>>,undefined) when bit_size(Rest) < 15 ->
+    throw({error, incomplete});
 
 decode_length(Buffer,{Lb,Ub}) when Ub =< 65535 ,Lb >= 0 -> % constrained
     decode_constrained_number(Buffer,{Lb,Ub});
@@ -661,11 +712,14 @@ decode_length(Bin,{_,_Lb,_Ub}) -> %when Len =< 127 -> % Unconstrained or large U
 	<<2:2,Val:14,Rest/bitstring>> -> 
 	    {Val,Rest};
 	<<3:2,_:14,_Rest/bitstring>> -> 
-	    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}})
+	    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}});
+	<<1:1,Rest/bitstring>> when bit_size(Rest) < 15 ->
+	    throw({error, incomplete});
+        Bin when bit_size(Bin) < 8 ->
+	    throw({error, incomplete})
     end;
 decode_length(Buffer,SingleValue) when is_integer(SingleValue) ->
     {SingleValue,Buffer}.
-
 
 						% X.691:11
 encode_boolean(true) ->
@@ -1059,22 +1113,24 @@ make_and_set_list([], _) ->
 
 encode_octet_string(C,{_Name,Val}) ->
     encode_octet_string(C,Val);
+encode_octet_string(C,Val) when is_list(Val) ->
+    encode_octet_string(C, list_to_binary(Val));
 encode_octet_string(C,Val) ->
     case get_constraint(C,'SizeConstraint') of
 	0 ->
 	    <<>>;
 	1 ->
-	    list_to_binary(Val);
+	    Val;
 	2 ->
-	    list_to_binary(Val);
-	Sv when Sv =<65535, Sv == length(Val) -> % fixed length
-	    list_to_binary(Val);
+	    Val;
+	Sv when Sv =<65535, Sv == size(Val) -> % fixed length
+	    Val;
 	VR = {_,_}  ->
-	    [encode_length(VR,length(Val)),list_to_binary(Val)];
+	    [encode_length(VR,size(Val)),Val];
 	Sv when is_list(Sv) ->
-	    [encode_length({hd(Sv),lists:max(Sv)},length(Val)),list_to_binary(Val)];
+	    [encode_length({hd(Sv),lists:max(Sv)},size(Val)),Val];
 	no  ->
-	    [encode_length(undefined,length(Val)),list_to_binary(Val)]
+	    [encode_length(undefined,size(Val)),Val]
     end.
 
 decode_octet_string(Bytes,C) ->
@@ -1560,9 +1616,14 @@ encode_real(Real) ->
 %% decode_real({Name,Val}) -> {REALvalue,Rest}
 decode_real(Bytes) ->
     {Len,Bytes2} = decode_length(Bytes,undefined),
-    <<Bytes3:Len/binary,Rest/bitstring>> = Bytes2,
-    {RealVal,Rest,Len} = ?RT_COMMON:decode_real(Bytes3,Len),
-    {RealVal,Rest}.
+    true = is_bitstring(Bytes2),
+    try
+        <<Bytes3:Len/binary,Rest/bitstring>> = Bytes2,
+        {RealVal,Rest,Len} = ?RT_COMMON:decode_real(Bytes3,Len),
+        {RealVal,Rest}
+    catch
+        error:{badmatch,_} -> throw({error, incomplete})
+    end.
 
 
 get_constraint([{Key,V}],Key) ->
