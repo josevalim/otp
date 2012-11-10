@@ -2010,7 +2010,7 @@ expr({'fun',Line,Body}, Vt, St) ->
     %%No one can think funs export!
     case Body of
         {clauses,Cs} ->
-            {Bvt, St1} = fun_clauses(Cs, Vt, St),
+            {Bvt, St1} = fun_clauses(Cs, Vt, St, none),
             {vtupdate(Bvt, Vt), St1};
         {function,F,A} ->
 	    %% BifClash - Fun expression
@@ -2029,6 +2029,9 @@ expr({'fun',Line,Body}, Vt, St) ->
 	    {Bvt, St1} = expr_list([M,F,A], Vt, St),
 	    {vtupdate(Bvt, Vt),St1}
     end;
+expr({named_fun,Line,Name,Cs}, Vt, St) ->
+    {Bvt, St1} = fun_clauses(Cs, Vt, St, {Name,Line}),
+    {vtupdate(Bvt, Vt), St1};
 expr({call,_Line,{atom,_Lr,is_record},[E,{atom,Ln,Name}]}, Vt, St0) ->
     {Rvt,St1} = expr(E, Vt, St0),
     {Rvt,exist_record(Ln, Name, St1)};
@@ -2180,6 +2183,7 @@ is_valid_record(Rec) ->
         {lc, _, _, _} -> false;
         {record_index, _, _, _} -> false;
         {'fun', _, _} -> false;
+        {named_fun, _, _, _} -> false;
         _ -> true
     end.
 
@@ -2918,6 +2922,18 @@ handle_generator(P,E,Vt,Uvt,St0) ->
 %% It is an error if variable is bound inside a record definition
 %% unless it was introduced in a fun or an lc. Only if pat_var finds
 %% such variables can the correct line number be given.
+
+fun_clauses(Cs, Vt, St, none) ->
+    fun_clauses(Cs, Vt, St);
+fun_clauses(Cs, Vt, St, {'_',_}) ->
+    fun_clauses(Cs, Vt, St);
+fun_clauses(Cs, Vt, St, {Name,Line}) ->
+    {[],Bvt,St2} = pat_var(Name, Line, [], [], St#lint{recdef_top=false}),
+    St3 = shadow_vars(Bvt, Vt, 'named fun', St2),
+    Vt2 = vtupdate(vtsubtract(Vt, Bvt), Bvt),
+    {Vt3,St4} = fun_clauses(Cs, Vt2, St3),
+    {_,St5} = check_old_unused_vars(Vt3, Bvt, St4),
+    {vtold(Vt3, Vt),St5}.
 
 fun_clauses(Cs, Vt, St) ->
     OldRecDef = St#lint.recdef_top,
