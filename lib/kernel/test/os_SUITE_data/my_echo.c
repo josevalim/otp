@@ -10,6 +10,10 @@ main(int argc, char** argv)
      * quotes are interpreted correctly.
      */
 
+    if (argc == 1) {
+	return 1;
+    }
+
     while (argc-- > 1) {
 	printf("%s%s", sep, argv++[1]);
 	sep = "::";

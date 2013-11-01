@@ -20,7 +20,7 @@
 
 %% Provides a common operating system interface.
 
--export([type/0, version/0, cmd/1, find_executable/1, find_executable/2]).
+-export([type/0, version/0, cmd/1, cmd/2, find_executable/1, find_executable/2]).
 
 -include("file.hrl").
 
@@ -182,6 +182,16 @@ extensions() ->
 -spec cmd(Command) -> string() when
       Command :: atom() | io_lib:chars().
 cmd(Cmd) ->
+  cmd(Cmd, []).
+
+-spec cmd(Command, []) -> string() when Command :: atom() | io_lib:chars();
+         (Command, [exit_status]) -> string() when Command :: atom() | io_lib:chars().
+cmd(Cmd, []) ->
+  element(1, do_cmd(Cmd));
+cmd(Cmd, [exit_status]) ->
+  do_cmd(Cmd).
+
+do_cmd(Cmd) ->
     validate(Cmd),
     case type() of
 	{unix, _} ->
@@ -195,7 +205,7 @@ cmd(Cmd) ->
             %% open_port/2 awaits string() in Command, but io_lib:chars() can be
             %% deep lists according to io_lib module description.
             Command = lists:flatten(Command0),
-	    Port = open_port({spawn, Command}, [stream, in, eof, hide]),
+	    Port = open_port({spawn, Command}, [stream, in, eof, hide, exit_status]),
 	    get_data(Port, [])
     end.
 
@@ -269,7 +279,7 @@ start_port_srv(Request) ->
     end.
 
 start_port_srv_handle({Ref,Client}) ->
-    Reply = try open_port({spawn, ?SHELL},[stream]) of
+    Reply = try open_port({spawn, ?SHELL},[stream, exit_status]) of
 		Port when is_port(Port) ->
 		    (catch port_connect(Port, Client)),
 		    unlink(Port),
@@ -301,13 +311,13 @@ unix_get_data(Port, Sofar) ->
     receive
 	{Port,{data, Bytes}} ->
 	    case eot(Bytes) of
-		{done, Last} ->
-		    lists:flatten([Sofar|Last]);
+		{done, Last, NewStatus} ->
+		    {lists:flatten([Sofar|Last]), NewStatus};
 		more  ->
 		    unix_get_data(Port, [Sofar|Bytes])
 	    end;
 	{'EXIT', Port, _} ->
-	    lists:flatten(Sofar)
+	    {lists:flatten(Sofar), 127}
     end.
 
 %%
@@ -316,12 +326,17 @@ unix_get_data(Port, Sofar) ->
 eot(Bs) ->
     eot(Bs, []).
 
-eot([4| _Bs], As) ->
-    {done, lists:reverse(As)};
+eot([4| Bs], As) ->
+    {done, lists:reverse(As), eot_status(Bs, [])};
 eot([B| Bs], As) ->
     eot(Bs, [B| As]);
 eot([], _As) ->
     more.
+
+eot_status([$\n| _Bs], As) ->
+    list_to_integer(lists:reverse(As));
+eot_status([B| Bs], As) ->
+    eot_status(Bs, [B| As]).
 
 %%
 %% mk_cmd(Cmd) -> {ok, ShellCommandString} | {error, ErrorString}
@@ -337,7 +352,7 @@ mk_cmd(Cmd) when is_atom(Cmd) ->		% backward comp.
 mk_cmd(Cmd) ->
     %% We insert a new line after the command, in case the command
     %% contains a comment character.
-    io_lib:format("(~ts\n) </dev/null; echo  \"\^D\"\n", [Cmd]).
+    io_lib:format("(~ts\n) </dev/null; echo  \"\^D\"$?\n", [Cmd]).
 
 
 validate(Atom) when is_atom(Atom) ->
@@ -364,10 +379,14 @@ get_data(Port, Sofar) ->
 		    true
 	    end,
 	    receive
+		{Port, {exit_status, Status}} ->
+		    true
+	    end,
+	    receive
 		{'EXIT',  Port,  _} ->
 		    ok
 	    after 1 ->				% force context switch
 		    ok
 	    end,
-	    lists:flatten(Sofar)
+	    {lists:flatten(Sofar), Status}
     end.

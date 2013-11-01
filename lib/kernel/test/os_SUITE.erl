@@ -20,7 +20,7 @@
 
 -export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1,
 	 init_per_group/2,end_per_group/2]).
--export([space_in_cwd/1, quoting/1, space_in_name/1, bad_command/1,
+-export([space_in_cwd/1, quoting/1, space_in_name/1, bad_command/1, cmd_with_status/1,
 	 find_executable/1, unix_comment_in_command/1, deep_list_command/1, evil/1]).
 
 -include_lib("test_server/include/test_server.hrl").
@@ -28,7 +28,7 @@
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() ->
-    [space_in_cwd, quoting, space_in_name, bad_command,
+    [space_in_cwd, quoting, space_in_name, bad_command, cmd_with_status,
      find_executable, unix_comment_in_command, deep_list_command,
      evil].
 
@@ -148,6 +148,18 @@ bad_command(Config) when is_list(Config) ->
     %% a message from the shell).
     ?line os:cmd("xxxxx"),
 
+    ok.
+
+cmd_with_status(doc) -> "Test command with exit status.";
+cmd_with_status(suite) -> [];
+cmd_with_status(Config) when is_list(Config) ->
+    ?line DataDir = ?config(data_dir, Config),
+    ?line Echo = filename:join(DataDir, "my_echo"),
+
+    ?line { Result, 0 } = os:cmd(Echo ++ " one", [exit_status]),
+    ?line comp("one", Result),
+
+    ?line { [], 1 } = os:cmd(Echo, [exit_status]),
     ok.
 
 find_executable(suite) -> [];
