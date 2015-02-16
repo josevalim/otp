@@ -47,7 +47,6 @@
 %%-export([get_slot/2,get_bucket/2,on_bucket/3,fold_dict/3,
 %%	 maybe_expand/2,maybe_contract/2]).
 
-%% Note: mk_seg/1 must be changed too if seg_size is changed.
 -define(seg_size, 16).
 -define(max_seg, 32).
 -define(expand_load, 5).
@@ -55,6 +54,7 @@
 -define(exp_size, (?seg_size * ?expand_load)).
 -define(con_size, (?seg_size * ?contract_load)).
 
+-compile({inline, [mk_seg/0]}).
 -type segs(_Key, _Value) :: tuple().
 
 %% Define a hashtable.  The default values are the standard ones.
@@ -80,7 +80,7 @@
 -spec new() -> dict().
 
 new() ->
-    Empty = mk_seg(?seg_size),
+    Empty = mk_seg(),
     #dict{empty=Empty,segs={Empty}}.
 
 -spec is_key(Key, Dict) -> boolean() when
@@ -417,6 +417,8 @@ on_bucket(F, T, Slot) ->
 %%  could have implemented map and filter using fold but these are
 %%  faster.  We hope!
 
+fold_dict(F, Acc, #dict{size=0}) when is_function(F, 3) ->
+    Acc;
 fold_dict(F, Acc, D) ->
     Segs = D#dict.segs,
     fold_segs(F, Acc, Segs, tuple_size(Segs)).
@@ -434,6 +436,8 @@ fold_bucket(F, Acc, [?kv(Key,Val)|Bkt]) ->
     fold_bucket(F, F(Key, Val, Acc), Bkt);
 fold_bucket(F, Acc, []) when is_function(F, 3) -> Acc.
 
+map_dict(F, #dict{size=0} = Dict) when is_function(F, 2) ->
+    Dict;
 map_dict(F, D) ->
     Segs0 = tuple_to_list(D#dict.segs),
     Segs1 = map_seg_list(F, Segs0),
@@ -453,6 +457,8 @@ map_bucket(F, [?kv(Key,Val)|Bkt]) ->
     [?kv(Key,F(Key, Val))|map_bucket(F, Bkt)];
 map_bucket(F, []) when is_function(F, 2) -> [].
 
+filter_dict(F, #dict{size=0} = Dict) when is_function(F, 2) ->
+    Dict;
 filter_dict(F, D) ->
     Segs0 = tuple_to_list(D#dict.segs),
     {Segs1,Fc} = filter_seg_list(F, Segs0, [], 0),
@@ -558,9 +564,9 @@ rehash([?kv(Key,_Bag)=KeyBag|T], Slot1, Slot2, MaxN) ->
     end;
 rehash([], _Slot1, _Slot2, _MaxN) -> [[]|[]].
 
-%% mk_seg(Size) -> Segment.
+%% mk_seg() -> Segment.
 
-mk_seg(16) -> {[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]}.
+mk_seg() -> erlang:make_tuple(?seg_size, []).
 
 %% expand_segs(Segs, EmptySeg) -> NewSegs.
 %% contract_segs(Segs) -> NewSegs.
