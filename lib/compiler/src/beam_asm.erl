@@ -91,10 +91,20 @@ build_file(Code, Attr, Dict, NumLabels, NumFuncs, Abst, SourceFile, Opts) ->
 		       NumFuncs:32>>,
 		      Code),
 
-    %% Create the atom table chunk.
+    %% Create the latin atom table chunk.
 
-    {NumAtoms, AtomTab} = beam_dict:atom_table(Dict),
-    AtomChunk = chunk(<<"Atom">>, <<NumAtoms:32>>, AtomTab),
+    {LatinAtoms, UTF8Atoms} = beam_dict:atom_table(Dict),
+    {LatinNumAtoms, LatinAtomTab} = LatinAtoms,
+    LatinAtomChunk = chunk(<<"Atom">>, <<LatinNumAtoms:32>>, LatinAtomTab),
+
+    %% Create the utf8 atom table chunk.
+
+    UTF8AtomChunk =
+	case UTF8Atoms of
+	    {0, _} -> <<>>;
+	    {UTF8NumAtoms, UTF8AtomTab} ->
+		chunk(<<"AtU8">>, <<UTF8NumAtoms:32>>, UTF8AtomTab)
+	end,
 
     %% Create the import table chunk.
 
@@ -146,8 +156,8 @@ build_file(Code, Attr, Dict, NumLabels, NumFuncs, Abst, SourceFile, Opts) ->
 
     %% Create the attributes and compile info chunks.
 
-    Essentials0 = [AtomChunk,CodeChunk,StringChunk,ImportChunk,
-		   ExpChunk,LambdaChunk,LiteralChunk],
+    Essentials0 = [LatinAtomChunk,CodeChunk,StringChunk,ImportChunk,
+		   ExpChunk,LambdaChunk,LiteralChunk,UTF8AtomChunk],
     Essentials1 = [iolist_to_binary(C) || C <- Essentials0],
     MD5 = module_md5(Essentials1),
     Essentials = finalize_fun_table(Essentials1, MD5),

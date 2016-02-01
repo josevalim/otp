@@ -161,6 +161,7 @@ typedef struct {
 #define ATTR_CHUNK 7
 #define COMPILE_CHUNK 8
 #define LINE_CHUNK 9
+#define UTF8_ATOM_CHUNK 10
 
 #define NUM_CHUNK_TYPES (sizeof(chunk_types)/sizeof(chunk_types[0]))
 
@@ -186,6 +187,7 @@ static Uint chunk_types[] = {
     MakeIffId('A', 't', 't', 'r'), /* 7 */
     MakeIffId('C', 'I', 'n', 'f'), /* 8 */
     MakeIffId('L', 'i', 'n', 'e'), /* 9 */
+    MakeIffId('A', 't', 'U', '8'), /* 10 */
 };
 
 /*
@@ -487,6 +489,7 @@ static int scan_iff_file(LoaderState* stp, Uint* chunk_types,
 			 Uint num_types, Uint num_mandatory);
 static int verify_chunks(LoaderState* stp);
 static int load_atom_table(LoaderState* stp);
+static int load_utf8_atom_table(LoaderState* stp);
 static int load_import_table(LoaderState* stp);
 static int read_export_table(LoaderState* stp);
 static int is_bif(Eterm mod, Eterm func, unsigned arity);
@@ -673,6 +676,14 @@ erts_prepare_loading(Binary* magic, Process *c_p, Eterm group_leader,
     define_file(stp, "atom table", ATOM_CHUNK);
     if (!load_atom_table(stp)) {
 	goto load_error;
+    }
+
+    CHKBLK(ERTS_ALC_T_CODE,stp->code);
+    if (stp->chunks[UTF8_ATOM_CHUNK].size > 0) {
+        define_file(stp, "utf8 atom table", UTF8_ATOM_CHUNK);
+        if (!load_utf8_atom_table(stp)) {
+            goto load_error;
+        }
     }
 
     /*
@@ -1291,6 +1302,32 @@ load_atom_table(LoaderState* stp)
 	memcpy(sbuf, ap->name, ap->len);
 	sbuf[ap->len] = '\0';
 	LoadError1(stp, "module name in object code is %s", sbuf);
+    }
+
+    return 1;
+
+ load_error:
+    return 0;
+}
+
+static int
+load_utf8_atom_table(LoaderState* stp)
+{
+    int i = stp->num_atoms;
+
+    GetInt(stp, 4, stp->num_atoms);
+    stp->num_atoms = stp->num_atoms + i;
+    stp->atom = erts_realloc(ERTS_ALC_T_PREPARED_CODE,
+                             (void *) stp->atom,
+                             stp->num_atoms*sizeof(Eterm));
+
+    for (; i < stp->num_atoms; i++) {
+        byte* atom;
+        Uint n;
+
+        GetByte(stp, n);
+        GetString(stp, atom, n);
+        stp->atom[i] = erts_atom_put(atom, n, ERTS_ATOM_ENC_UTF8, 1);
     }
 
     return 1;

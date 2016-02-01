@@ -193,17 +193,28 @@ fname(Name, #asm{fnames=Fnames}=Dict) ->
 	    {Index,Dict#asm{fnames=Fnames#{Name=>Index}}}
     end.
 
-%% Returns the atom table.
-%%    atom_table(Dict) -> {LastIndex,[Length,AtomString...]}
--spec atom_table(bdict()) -> {non_neg_integer(), [[non_neg_integer(),...]]}.
+%% Returns the latin1 and utf8 atom tables.
+-spec atom_table(bdict()) ->
+    {{non_neg_integer(), [nonempty_improper_list(non_neg_integer(),binary())]},
+     {non_neg_integer(), [nonempty_improper_list(non_neg_integer(),binary())]}}.
 
 atom_table(#asm{atoms=Atoms}) ->
-    NumAtoms = maps:size(Atoms),
     Sorted = lists:keysort(2, maps:to_list(Atoms)),
-    {NumAtoms,[begin
-                   L = atom_to_list(A),
-                   [length(L)|L]
-               end || {A,_} <- Sorted]}.
+    atom_table(Sorted, 0, [], 0, []).
+
+atom_table([], LatinCount, Latin, UTF8Count, UTF8) ->
+    {{LatinCount, lists:reverse(Latin)},
+     {UTF8Count, lists:reverse(UTF8)}};
+
+atom_table([{Atom, _}|T], LatinCount, Latin, UTF8Count, UTF8) ->
+    try atom_to_binary(Atom, latin1) of
+	Binary ->
+	    atom_table(T, LatinCount + 1, [[byte_size(Binary)|Binary]|Latin], UTF8Count, UTF8)
+    catch
+	error:badarg ->
+	    Binary = atom_to_binary(Atom, utf8),
+	    atom_table(T, LatinCount, Latin, UTF8Count + 1, [[byte_size(Binary)|Binary]|UTF8])
+    end.
 
 %% Returns the table of local functions.
 %%    local_table(Dict) -> {NumLocals, [{Function, Arity, Label}...]}
