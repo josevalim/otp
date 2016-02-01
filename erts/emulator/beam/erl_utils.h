@@ -161,11 +161,14 @@ int eq(Eterm, Eterm);
 
 #define EQ(x,y) (((x) == (y)) || (is_not_both_immed((x),(y)) && eq((x),(y))))
 
+int erts_cmp_atoms(Eterm a, Eterm b);
 Sint erts_cmp(Eterm, Eterm, int, int);
+Sint erts_cmp_compound(Eterm, Eterm, int, int);
 Sint cmp(Eterm a, Eterm b);
 #define CMP(A,B)                         erts_cmp(A,B,0,0)
 #define CMP_TERM(A,B)                    erts_cmp(A,B,1,0)
 #define CMP_EQ_ONLY(A,B)                 erts_cmp(A,B,0,1)
+#define CMP_COMPOUND(A,B)                erts_cmp_compound(A,B,0,0)
 
 #define cmp_lt(a,b)          (CMP((a),(b)) <  0)
 #define cmp_le(a,b)          (CMP((a),(b)) <= 0)
@@ -174,17 +177,21 @@ Sint cmp(Eterm a, Eterm b);
 #define cmp_ge(a,b)          (CMP((a),(b)) >= 0)
 #define cmp_gt(a,b)          (CMP((a),(b)) >  0)
 
-#define cmp_lt_term(a,b)     (CMP_TERM((a),(b)) <  0)
-#define cmp_le_term(a,b)     (CMP_TERM((a),(b)) <= 0)
-#define cmp_ge_term(a,b)     (CMP_TERM((a),(b)) >= 0)
-#define cmp_gt_term(a,b)     (CMP_TERM((a),(b)) >  0)
-
-#define CMP_LT(a,b)          ((a) != (b) && cmp_lt((a),(b)))
-#define CMP_GE(a,b)          ((a) == (b) || cmp_ge((a),(b)))
 #define CMP_EQ(a,b)          ((a) == (b) || cmp_eq((a),(b)))
 #define CMP_NE(a,b)          ((a) != (b) && cmp_ne((a),(b)))
 
-#define CMP_LT_TERM(a,b)     ((a) != (b) && cmp_lt_term((a),(b)))
-#define CMP_GE_TERM(a,b)     ((a) == (b) || cmp_ge_term((a),(b)))
+#define CMP_SPEC(X,Y,Op,Action)				\
+    if (is_atom(X) && is_atom(Y)) {				\
+	if (erts_cmp_atoms(X, Y) Op 0) { Action; };		\
+    } else if (is_both_small(X, Y)) {				\
+	if (signed_val(X) Op signed_val(Y)) { Action; };	\
+    } else if (is_float(X) && is_float(Y)) {			\
+        FloatDef af, bf;					\
+        GET_DOUBLE(X, af);					\
+        GET_DOUBLE(Y, bf);					\
+        if (af.fd Op bf.fd) { Action; };			\
+    } else {							\
+	if (CMP_COMPOUND(X,Y) Op 0) { Action; };		\
+    }
 
 #endif

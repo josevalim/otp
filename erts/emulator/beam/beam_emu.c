@@ -720,8 +720,8 @@ void** beam_ops;
 #define NotEqualExact(X, Y, Action) if (EQ(X,Y)) { Action; }
 #define Equal(X, Y, Action) if (!CMP_EQ(X,Y)) { Action; }
 #define NotEqual(X, Y, Action) if (!CMP_NE(X,Y)) { Action; }
-#define IsLessThan(X, Y, Action) if (CMP_GE(X, Y)) { Action; }
-#define IsGreaterEqual(X, Y, Action) if (CMP_LT(X, Y)) { Action; }
+#define IsLessThan(X, Y, Action) CMP_SPEC(X,Y,>=,Action)
+#define IsGreaterEqual(X, Y, Action) CMP_SPEC(X,Y,<,Action)
 
 #define IsFloat(Src, Fail) if (is_not_float(Src)) { Fail; }
 
