@@ -168,7 +168,6 @@ Sint cmp(Eterm a, Eterm b);
 #define CMP(A,B)                         erts_cmp(A,B,0,0)
 #define CMP_TERM(A,B)                    erts_cmp(A,B,1,0)
 #define CMP_EQ_ONLY(A,B)                 erts_cmp(A,B,0,1)
-#define CMP_COMPOUND(A,B)                erts_cmp_compound(A,B,0,0)
 
 #define cmp_lt(a,b)          (CMP((a),(b)) <  0)
 #define cmp_le(a,b)          (CMP((a),(b)) <= 0)
@@ -178,9 +177,17 @@ Sint cmp(Eterm a, Eterm b);
 #define cmp_gt(a,b)          (CMP((a),(b)) >  0)
 
 #define CMP_EQ(a,b)          ((a) == (b) || cmp_eq((a),(b)))
-#define CMP_NE(a,b)          ((a) != (b) && cmp_ne((a),(b)))
 
-#define CMP_SPEC(X,Y,Op,Action)				\
+#define CMP_EQ_ACTION(X,Y,Action)	\
+    if ((X) != (Y)) { CMP_SPEC((X),(Y),!=,Action,1); }
+#define CMP_NE_ACTION(X,Y,Action)	\
+    if ((X) == (Y)) { Action; } else { CMP_SPEC((X),(Y),==,Action,1); }
+#define CMP_GE_ACTION(X,Y,Action)	\
+    if ((X) != (Y)) { CMP_SPEC((X),(Y),<,Action,0); }
+#define CMP_LT_ACTION(X,Y,Action)	\
+    if ((X) == (Y)) { Action; } else { CMP_SPEC((X),(Y),>=,Action,0); }
+
+#define CMP_SPEC(X,Y,Op,Action,EqOnly)				\
     if (is_atom(X) && is_atom(Y)) {				\
 	if (erts_cmp_atoms(X, Y) Op 0) { Action; };		\
     } else if (is_both_small(X, Y)) {				\
@@ -191,7 +198,7 @@ Sint cmp(Eterm a, Eterm b);
         GET_DOUBLE(Y, bf);					\
         if (af.fd Op bf.fd) { Action; };			\
     } else {							\
-	if (CMP_COMPOUND(X,Y) Op 0) { Action; };		\
+	if (erts_cmp_compound(X,Y,0,EqOnly) Op 0) { Action; };	\
     }
 
 #endif
