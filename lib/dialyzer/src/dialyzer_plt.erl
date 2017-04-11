@@ -470,13 +470,8 @@ compute_md5_from_file(File) ->
       Msg = io_lib:format("Not a regular file: ~s\n", [File]),
       throw({dialyzer_error, Msg});
     true ->
-      case dialyzer_utils:get_abstract_code_from_beam(File) of
-	error ->
-	  Msg = io_lib:format("Could not get abstract code for file: ~s (please recompile it with +debug_info)\n", [File]),
-	  throw({dialyzer_error, Msg});
-	{ok, Abs} ->
-	  erlang:md5(term_to_binary(Abs))
-      end
+      {ok, {_, MD5}} = beam_lib:md5(File),
+      MD5
   end.
 
 init_diff_list(RemoveFiles, AddFiles) ->
