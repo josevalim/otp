@@ -471,10 +471,6 @@ uri_get("file:/" ++ Path) ->
 uri_get("file:" ++ Path) ->
     Msg = io_lib:format("ignoring malformed URI: 'file:~ts'.", [Path]),
     {error, Msg};
-uri_get("http:" ++ Path) ->
-    uri_get_http("http:" ++ Path);
-uri_get("ftp:" ++ Path) ->
-    uri_get_ftp("ftp:" ++ Path);
 uri_get("//" ++ Path) ->
     Msg = io_lib:format("cannot access network-path: '//~ts'.", [Path]),
     {error, Msg};
@@ -499,66 +495,6 @@ uri_get_file(File0) ->
 	{error, R} ->
 	    {error, file:format_error(R)}
     end.
-
-uri_get_http(URI) ->
-    %% Try using option full_result=false
-    case catch {ok, httpc:request(get, {URI,[]}, [],
-				  [{full_result, false}])} of
-	{'EXIT', _} ->
-	    uri_get_http_r10(URI);
-	Result ->
-	    uri_get_http_1(Result, URI)
-    end.
-
-uri_get_http_r10(URI) ->
-    %% Try most general form of request
-    Result = (catch {ok, httpc:request(get, {URI,[]}, [], [])}),
-    uri_get_http_1(Result, URI).
-
-uri_get_http_1(Result, URI) ->
-    case Result of
-	{ok, {ok, {200, Text}}} when is_list(Text) ->
-	    %% new short result format
-	    {ok, Text};
-	{ok, {ok, {Status, Text}}} when is_integer(Status), is_list(Text) ->
-	    %% new short result format when status /= 200
-	    Phrase = httpd_util:reason_phrase(Status),
-	    {error, http_errmsg(Phrase, URI)};
-	{ok, {ok, {{_Vsn, 200, _Phrase}, _Hdrs, Text}}} when is_list(Text) ->
-	    %% new long result format
-	    {ok, Text};
-	{ok, {ok, {{_Vsn, _Status, Phrase}, _Hdrs, Text}}} when is_list(Text) ->
-	    %% new long result format when status /= 200
-	    {error, http_errmsg(Phrase, URI)};
-	{ok, {200,_Hdrs,Text}} when is_list(Text) ->
-	    %% old result format
-	    {ok, Text};
-	{ok, {Status,_Hdrs,Text}} when is_list(Text) ->
-	    %% old result format when status /= 200
-	    Phrase = httpd_util:reason_phrase(Status),
-	    {error, http_errmsg(Phrase, URI)};
-	{ok, {error, R}} ->
-	    Reason = inet:format_error(R),
-	    {error, http_errmsg(Reason, URI)};
-	{ok, R} ->
-	    Reason = io_lib:format("bad return value ~tP", [R, 5]),
-	    {error, http_errmsg(Reason, URI)};
-	{'EXIT', R} ->
-	    Reason = io_lib:format("crashed with reason ~tw", [R]),
-	    {error, http_errmsg(Reason, URI)};
-	R ->
-	    Reason = io_lib:format("uncaught throw: ~tw", [R]),
-	    {error, http_errmsg(Reason, URI)}
-    end.
-
-http_errmsg(Reason, URI) ->
-    io_lib:format("http error: ~ts: '~ts'", [Reason, URI]).
-
-%% TODO: implement ftp access method
-
-uri_get_ftp(URI) ->
-    Msg = io_lib:format("cannot access ftp scheme yet: '~ts'.", [URI]),
-    {error, Msg}.
 
 %% @private
 to_label([$\s | Cs]) ->
