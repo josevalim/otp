@@ -40,7 +40,7 @@ function({function,fib,1,_,_}, _NoGetHdTl) ->
         {line,[{location,"foo.exs",2}]},
         {func_info,{atom,'Elixir.Fib'},{atom,fib},1},
         {label,8},
-        fib_pre,
+        fib_pre
         % {select_val,{x,0},{f,10},{list,[{integer,1},{f,9},{integer,0},{f,9}]}},
         % {label,9},
         % return,
@@ -55,16 +55,16 @@ function({function,fib,1,_,_}, _NoGetHdTl) ->
         % {'%',{type_info,{x,0},number}},
         % {line,[{location,"foo.exs",4}]},
         % {gc_bif,'-',{f,0},1,[{y,0},{integer,2}],{x,1}},
-        {move,{x,0},{y,0}},
-        {move,{x,1},{x,0}},
-        {line,[{location,"foo.exs",4}]},
-        {call,1,{f,8}},
+        % {move,{x,0},{y,0}},
+        % {move,{x,1},{x,0}},
+        % {line,[{location,"foo.exs",4}]},
+        % {call,1,{f,8}},
         % {'%',{type_info,{x,0},number}},
         % {line,[{location,"foo.exs",4}]},
         % {gc_bif,'+',{f,0},1,[{y,0},{x,0}],{x,0}},
         % {deallocate,1},
         % return
-        fib_pos
+        % fib_pos
         ]},
     io:format("~p~n", [Res]),
     Res;

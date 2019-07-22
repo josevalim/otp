@@ -8,6 +8,7 @@ end
 IO.puts File.read!("Elixir.Fib_fib_1.dis")
 
 IO.inspect :timer.tc(Fib, :fib, [10])
+IO.inspect :timer.tc(Fib, :fib, [15])
 IO.inspect :timer.tc(Fib, :fib, [37])
 IO.inspect :timer.tc(Fib, :fib, [37])
 IO.inspect :timer.tc(Fib, :fib, [37])
