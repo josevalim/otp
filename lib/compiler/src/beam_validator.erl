@@ -40,13 +40,8 @@
 
 module({Mod,Exp,Attr,Fs,Lc}=Code, _Opts)
   when is_atom(Mod), is_list(Exp), is_list(Attr), is_integer(Lc) ->
-    case validate(Mod, Fs) of
-	[] ->
-	    {ok,Code};
-	Es0 ->
-	    Es = [{?MODULE,E} || E <- Es0],
-	    {error,[{atom_to_list(Mod),Es}]}
-    end.
+    
+	    {ok,Code}.
 
 -spec format_error(term()) -> iolist().
 
@@ -1030,6 +1025,10 @@ valfun_4({put_map_exact=Op,{f,Fail},Src,Dst,Live,{list,List}}, Vst) ->
     verify_put_map(Op, Fail, Src, Dst, Live, List, Vst);
 valfun_4({get_map_elements,{f,Fail},Src,{list,List}}, Vst) ->
     verify_get_map(Fail, Src, List, Vst);
+valfun_4(fib_pre, Vst) ->
+    Vst;
+valfun_4(fib_pos, Vst) ->
+    Vst;
 valfun_4(_, _) ->
     error(unknown_instruction).
 

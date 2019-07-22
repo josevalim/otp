@@ -602,3 +602,6 @@ BEAM_FORMAT_NUMBER=0
 ## @spec swap Register1 Register2
 ## @doc  Swaps the contents of two registers.
 169: swap/2
+
+170: fib_pre/0
+171: fib_pos/0

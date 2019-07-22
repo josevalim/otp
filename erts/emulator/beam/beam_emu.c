@@ -773,6 +773,263 @@ void process_main(Eterm * x_reg_array, FloatDef* f_reg_array)
 
 #include "beam_hot.h"
 
+OpCase(fib_pre): {
+        // i_jump_on_val_zero_xfI x(0) f(0000000110806A40) 2 return return
+        fib_pre1: {
+            Eterm index = x(0);
+            if (is_small(index)) {
+              index = (Uint) (signed_val(index) - 0);
+              if (index < 2) {
+                  SET_I(c_p->cp);
+                  // DTRACE_RETURN_FROM_PC(c_p);
+
+                  /*
+                  * We must clear the CP to make sure that a stale value do not
+                  * create a false module dependcy preventing code upgrading.
+                  * It also means that we can use the CP in stack backtraces.
+                  */
+                  c_p->cp = 0;
+                  CHECK_TERM(r(0));
+                  HEAP_SPACE_VERIFIED(0);
+                  // Expansion of DispatchReturn
+                  do {
+                    if (FCALLS > 0 || FCALLS > neg_o_reds) {
+                        FCALLS--;
+                        Goto(*I);
+                    }
+                    else {
+                        c_p->current = NULL;
+                        c_p->arity = 1;
+                        goto context_switch3;
+                    }
+                  } while (0);
+              }
+            }
+            goto fib_pre2;
+        }
+
+        fib_pre2: { // i_increment_rWd r(0) -1 x(1)
+            Eterm increment_reg_val = r(0);
+            Eterm* dst_ptr = &x(1);
+            Eterm increment_val = (Uint)(-1);
+            Eterm result;
+
+            if (ERTS_LIKELY(is_small(increment_reg_val))) {
+#ifdef HAVE_OVERFLOW_CHECK_BUILTINS
+              Sint lhs_tagged, rhs_untagged, res;
+
+              /* See plus.execute */
+              lhs_tagged = increment_reg_val;
+              rhs_untagged = (Sint)increment_val << _TAG_IMMED1_SIZE;
+
+              if (ERTS_LIKELY(!__builtin_add_overflow(lhs_tagged, rhs_untagged, &res))) {
+                ASSERT(is_small(res));
+                *dst_ptr = res;
+                goto fib_pre3;
+              }
+#else
+              Sint i = signed_val(increment_reg_val) + increment_val;
+              if (ERTS_LIKELY(IS_SSMALL(i))) {
+                *dst_ptr = make_small(i);
+                goto fib_pre3;
+              }
+#endif
+            }
+
+            result = erts_mixed_plus(c_p, increment_reg_val, make_small(increment_val));
+            ERTS_HOLE_CHECK(c_p);
+            if (ERTS_LIKELY(is_value(result))) {
+              *dst_ptr = result;
+              goto fib_pre3;
+            }
+            ASSERT(c_p->freason != BADMATCH || is_value(c_p->fvalue));
+            goto find_func_info;
+        }
+
+        fib_pre3: { // allocate_tt 1 2
+            // Eterm tmp_packed1 = I[1];
+            // BeamInstr next_pf = BeamCodeAddr(I[2]);
+            do {
+              unsigned needed = tb(1) + 1; // tb(tmp_packed1&BEAM_LOOSE_MASK) + 1;
+              do {
+                Uint need = 0 + needed;
+                if (ERTS_UNLIKELY(E - HTOP < need)) {
+                  do {
+                    //
+                    // Since a garbage collection is expensive anyway, we can afford
+                    // to save the instruction counter so that the correct function will
+                    // be pointed in the crash dump if the garbage collection fails
+                    // because of insufficient memory.
+                    //
+                    SWAPOUT;
+                    c_p->i = I;
+                  } while (0);
+                  PROCESS_MAIN_CHK_LOCKS(c_p);
+                  // FCALLS -= erts_garbage_collect_nobump(c_p, need, reg, tb((tmp_packed1>>BEAM_LOOSE_SHIFT)), FCALLS);
+                  FCALLS -= erts_garbage_collect_nobump(c_p, need, reg, tb(2), FCALLS);
+                  ERTS_VERIFY_UNUSED_TEMP_ALLOC(c_p);
+                  PROCESS_MAIN_CHK_LOCKS(c_p);
+                  SWAPIN;
+                }
+                HEAP_SPACE_VERIFIED(0);
+              } while (0);
+              E -= needed;
+              *E = make_cp(c_p->cp);
+              c_p->cp = 0;
+            } while (0);
+            goto fib_pre4;
+        }
+
+        fib_pre4: { // move_shift_xxy x(1) x(0) y(0)
+            // Eterm tmp_packed1 = I[1];
+            // BeamInstr next_pf = BeamCodeAddr(I[2]);
+            Eterm V;
+            V = x(1);
+            y(1) = x(0);
+            x(0) = V;
+            goto fib_pre5;
+        }
+
+        fib_pre5: { // i_call_f 'Elixir.Fib':fib/1
+            SET_CP(c_p, &&fib_pre6);
+            // do {
+            //     BeamInstr dis_next;
+            //     dis_next = *I;
+            //     CHECK_ARGS(I);
+            //     if (FCALLS > 0 || FCALLS > neg_o_reds) {
+            //         FCALLS--;
+            //         Goto(dis_next);
+            //     } else {       
+            //         goto context_switch;
+            //     }
+            // } while (0);
+            Dispatch();
+        }
+
+        fib_pre6: { // i_increment_yWd y(0) -2 x(1)
+            erts_printf("OMG");
+            Eterm increment_reg_val = y(1);
+            Eterm* dst_ptr = &x(1);
+            Eterm increment_val = (Uint)(-2);
+            Eterm result;
+
+            if (ERTS_LIKELY(is_small(increment_reg_val))) {
+#ifdef HAVE_OVERFLOW_CHECK_BUILTINS
+              Sint lhs_tagged, rhs_untagged, res;
+
+              /* See plus.execute */
+              lhs_tagged = increment_reg_val;
+              rhs_untagged = (Sint)increment_val << _TAG_IMMED1_SIZE;
+
+              if (ERTS_LIKELY(!__builtin_add_overflow(lhs_tagged, rhs_untagged, &res))) {
+                ASSERT(is_small(res));
+                *dst_ptr = res;
+                SET_I((BeamInstr *) I+1);
+                Goto(*I);
+              }
+#else
+              Sint i = signed_val(increment_reg_val) + increment_val;
+              if (ERTS_LIKELY(IS_SSMALL(i))) {
+                *dst_ptr = make_small(i);
+                SET_I((BeamInstr *) I+1);
+                Goto(*I);
+              }
+#endif
+            }
+
+            result = erts_mixed_plus(c_p, increment_reg_val, make_small(increment_val));
+            ERTS_HOLE_CHECK(c_p);
+            if (ERTS_LIKELY(is_value(result))) {
+              *dst_ptr = result;
+              SET_I((BeamInstr *) I+1);
+              Goto(*I);
+            }
+            ASSERT(c_p->freason != BADMATCH || is_value(c_p->fvalue));
+            goto find_func_info;
+        }
+
+}
+
+OpCase(fib_pos): {
+    // fib6: { // move_shift_xxy x(1) x(0) y(0)
+    //     // Eterm tmp_packed1 = I[1];
+    //     // BeamInstr next_pf = BeamCodeAddr(I[2]);
+    //     Eterm V;
+    //     V = xb(1);
+    //     yb(0) = xb(0);
+    //     xb(0) = V;
+    //     I += 2;
+    //     // ASSERT(VALID_INSTR(next_pf));
+    //     goto fib7; // GotoPF(next_pf);
+    // }
+
+    // fib_pos7: { // i_call_f 'Elixir.Fib':fib/1
+    //     SET_CP(c_p, I+2);
+    //     ASSERT(VALID_INSTR(*(I + (I[1]) + 0)));
+    //     I += I[1] + 0;;
+    //     DTRACE_LOCAL_CALL(c_p, erts_code_to_codemfa(I));
+    //     Dispatch();;
+    // }
+
+    fib_pos8: { // i_plus_yxjd y(0) x(0) j(0) x(0)
+        Eterm PlusOp1, PlusOp2;
+        PlusOp1 = y(1);
+        PlusOp2 = x(0);
+
+        Eterm* dst_ptr = &x(0);
+        if (ERTS_LIKELY(is_both_small(PlusOp1, PlusOp2))) {
+#ifdef HAVE_OVERFLOW_CHECK_BUILTINS
+          Sint lhs_tagged, rhs_untagged, res;
+
+          lhs_tagged = PlusOp1;
+          rhs_untagged = PlusOp2 & ~_TAG_IMMED1_MASK;
+
+          if (ERTS_LIKELY(!__builtin_add_overflow(lhs_tagged, rhs_untagged, &res))) {
+            ASSERT(is_small(res));
+            *dst_ptr = res;
+            goto fib_pos9;
+          }
+#else
+          Sint i = signed_val(PlusOp1) + signed_val(PlusOp2);
+          if (ERTS_LIKELY(IS_SSMALL(i))) {
+            *dst_ptr = make_small(i);
+            goto fib_pos9;
+          }
+#endif
+        }
+        do {
+          Eterm result;
+#ifdef DEBUG
+          Eterm* orig_htop = HTOP;
+          Eterm* orig_stop = E;
+#endif
+          DEBUG_SWAPOUT;
+          result = erts_mixed_plus (c_p, PlusOp1, PlusOp2);
+          DEBUG_SWAPIN;
+          ASSERT(orig_htop == HTOP && orig_stop == E);
+          ERTS_HOLE_CHECK(c_p);
+          if (ERTS_LIKELY(is_value(result))) {
+            *dst_ptr = result;
+            goto fib_pos9;
+          }
+          reg[0] = PlusOp1;
+          reg[1] = PlusOp2;
+          SWAPOUT;
+          I = handle_error(c_p, I, reg, &bif_export[BIF_splus_2]->info.mfa);
+          goto post_error_handling;;
+        } while (0);
+    }
+
+    fib_pos9: { // deallocate_return_Q 1
+        int words_to_pop = 16; // Conversion from I[1];
+        SET_I((BeamInstr *) cp_val(*E));
+        E = ADD_BYTE_OFFSET(E, words_to_pop);
+        CHECK_TERM(x(0));
+        DispatchReturn;
+    }
+ }
+
+
 #ifdef DEBUG
     /*
      * Set a breakpoint here to get control just after a call instruction.

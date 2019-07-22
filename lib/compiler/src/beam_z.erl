@@ -34,6 +34,41 @@ module({Mod,Exp,Attr,Fs0,Lc}, Opts) ->
     Fs = [function(F, NoGetHdTl) || F <- Fs0],
     {ok,{Mod,Exp,Attr,Fs,Lc}}.
 
+function({function,fib,1,_,_}, _NoGetHdTl) ->
+    Res = {function,fib,1,8,[
+        {label,7},
+        {line,[{location,"foo.exs",2}]},
+        {func_info,{atom,'Elixir.Fib'},{atom,fib},1},
+        {label,8},
+        fib_pre,
+        % {select_val,{x,0},{f,10},{list,[{integer,1},{f,9},{integer,0},{f,9}]}},
+        % {label,9},
+        % return,
+        % {label,10},
+        % {line,[{location,"foo.exs",4}]},
+        % {gc_bif,'-',{f,0},1,[{x,0},{integer,1}],{x,1}},
+        % {allocate,1,2},
+        % {move,{x,0},{y,0}},
+        % {move,{x,1},{x,0}},
+        % {line,[{location,"foo.exs",4}]},
+        % {call,1,{f,8}},
+        % {'%',{type_info,{x,0},number}},
+        % {line,[{location,"foo.exs",4}]},
+        % {gc_bif,'-',{f,0},1,[{y,0},{integer,2}],{x,1}},
+        {move,{x,0},{y,0}},
+        {move,{x,1},{x,0}},
+        {line,[{location,"foo.exs",4}]},
+        {call,1,{f,8}},
+        % {'%',{type_info,{x,0},number}},
+        % {line,[{location,"foo.exs",4}]},
+        % {gc_bif,'+',{f,0},1,[{y,0},{x,0}],{x,0}},
+        % {deallocate,1},
+        % return
+        fib_pos
+        ]},
+    io:format("~p~n", [Res]),
+    Res;
+
 function({function,Name,Arity,CLabel,Is0}, NoGetHdTl) ->
     try
 	Is1 = undo_renames(Is0),
