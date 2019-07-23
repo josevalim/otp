@@ -11526,6 +11526,7 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
 
     p->i = (BeamInstr *) beam_apply;
     p->cp = (BeamInstr *) beam_apply+1;
+    p->inner_cp = 0;
 
     p->arg_reg = p->def_arg_reg;
     p->max_arg_reg = sizeof(p->def_arg_reg)/sizeof(p->def_arg_reg[0]);

@@ -969,6 +969,7 @@ struct process {
     Eterm def_arg_reg[6];	/* Default array for argument registers. */
 
     BeamInstr* cp;		/* (untagged) Continuation pointer (for threaded code). */
+    BeamInstr* inner_cp;	/* (untagged) Continuation inner pointer (for threaded code). */
     BeamInstr* i;		/* Program counter for threaded code. */
     Sint catches;		/* Number of catches on stack */
     Sint fcalls;		/* 
