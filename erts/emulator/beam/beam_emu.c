@@ -404,7 +404,7 @@ static Eterm erts_gc_update_map_exact(Process* p, Eterm* reg, Uint live,
                               Uint n, Eterm* new_p) ERTS_NOINLINE;
 static Eterm get_map_element(Eterm map, Eterm key);
 static Eterm get_map_element_hash(Eterm map, Eterm key, Uint32 hx);
-static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds);
+static int fib(Process* c_p, Eterm* reg, BeamInstr **I, int neg_o_reds, int trampoline);
 
 /*
  * Functions not directly called by process_main(). OK to inline.
@@ -776,12 +776,45 @@ void process_main(Eterm * x_reg_array, FloatDef* f_reg_array)
 
 OpCase(fib_pre): {
     HEAVY_SWAPOUT;
-    int result = fib(c_p, reg, I, neg_o_reds);
+    BeamInstr* Itmp = I;
+    int result = fib(c_p, reg, &Itmp, neg_o_reds, 0);
     HEAVY_SWAPIN;
     switch(result) {
       case 0:
-        SET_I(c_p->cp);
-        c_p->cp = 0;
+        I = Itmp;
+        if (FCALLS > 0) {
+           FCALLS--;
+           // erts_printf("1: %T %T\n", I, c_p->cp);
+           Goto(*I);
+        // } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(c_p) && FCALLS > neg_o_reds) {
+        //    goto save_calls1;
+        } else {
+           goto context_switch;
+        }
+      case 1:
+        I = Itmp;
+        DispatchReturn;
+        break;
+      case 2:
+        goto context_switch;
+      case 3:
+        goto find_func_info;
+      case 4:
+        I = Itmp;
+        goto post_error_handling;
+    };
+ }
+
+OpCase(fib_pos): {
+    HEAVY_SWAPOUT;
+    I--;
+    BeamInstr* Itmp = I;
+    erts_printf("POS\n");
+    int result = fib(c_p, reg, &Itmp, neg_o_reds, 1);
+    HEAVY_SWAPIN;
+    switch(result) {
+      case 0:
+        I = Itmp;
         DispatchReturn;
         break;
       case 1:
@@ -789,14 +822,21 @@ OpCase(fib_pre): {
       case 2:
         goto find_func_info;
       case 3:
+        I = Itmp;
         goto post_error_handling;
+      case 5:
+        I = Itmp;
+        if (FCALLS > 0) {
+           FCALLS--;
+           // erts_printf("2: %T %T\n", I, c_p->cp);
+           Goto(*I);
+        // } else if (ERTS_PROC_GET_SAVED_CALLS_BUF(c_p) && FCALLS > neg_o_reds) {
+        //    goto save_calls1;
+        } else {
+           goto context_switch;
+        }
     };
  }
-
- OpCase(fib_pos): {
-
- }
-
 #ifdef DEBUG
     /*
      * Set a breakpoint here to get control just after a call instruction.
@@ -1024,11 +1064,18 @@ OpCase(fib_pre): {
     }
 }
 
-static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
+static int fib(Process* c_p, Eterm* reg, BeamInstr** IP, int neg_o_reds, int trampoline) {
+    BeamInstr* I = *IP;
     register Eterm* HTOP REG_htop;
     register Eterm* E REG_stop;
     register Sint FCALLS REG_fcalls;
     HEAVY_SWAPIN;
+
+    if(trampoline && c_p->inner_cp) {
+        BeamInstr* tmp_cp = c_p->inner_cp;
+        c_p->inner_cp = 0;
+        goto *tmp_cp;
+    }
 
         // i_jump_on_val_zero_xfI x(0) f(0000000110806A40) 2 return return
         fib_pre1: {
@@ -1052,8 +1099,10 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
                   // CHECK_TERM(r(0));
                   // HEAP_SPACE_VERIFIED(0);
                   // DispatchReturn;
+                  *IP = c_p->cp;
+                  c_p->cp = 0;
                   HEAVY_SWAPOUT;
-                  return 0;
+                  return 1;
               }
             }
             goto fib_pre2;
@@ -1094,14 +1143,14 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
               goto fib_pre3;
             }
             HEAVY_SWAPOUT;
-            return 2;
+            return 3;
         }
 
         fib_pre3: { // allocate_tt 1 2
             // Eterm tmp_packed1 = I[1];
             // BeamInstr next_pf = BeamCodeAddr(I[2]);
             do {
-              unsigned needed = tb(1) + 1; // tb(tmp_packed1&BEAM_LOOSE_MASK) + 1;
+              unsigned needed = tb(1) + 2; // tb(tmp_packed1&BEAM_LOOSE_MASK) + 1;
               do {
                 Uint need = 0 + needed;
                 if (ERTS_UNLIKELY(E - HTOP < need)) {
@@ -1125,7 +1174,9 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
                 HEAP_SPACE_VERIFIED(0);
               } while (0);
               E -= needed;
-              *E = make_cp(c_p->inner_cp);
+              *E = make_cp(c_p->cp);
+              c_p->cp = 0;
+              y(2) = make_cp(c_p->inner_cp);
               c_p->inner_cp = 0;
             } while (0);
             goto fib_pre4;
@@ -1141,17 +1192,27 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
             goto fib_pre5;
         }
 
+        // fib_pre5: { // i_call_f 'Elixir.Fib':fib/1
+        //     // erts_printf("8: %T %T %T\n", x(0), x(1), y(1));
+        //     c_p->inner_cp = &&fib_pre6;
+
+        //     if (FCALLS > 0 || FCALLS > neg_o_reds) {
+        //         FCALLS--;
+        //         goto fib_pre1;
+        //     } else {
+        //         HEAVY_SWAPOUT;
+        //         return 2;
+        //     }
+        // }
+
         fib_pre5: { // i_call_f 'Elixir.Fib':fib/1
             // erts_printf("5: %T %T %T\n", x(0), x(1), y(1));
+            c_p->cp = I+1;
             c_p->inner_cp = &&fib_pre6;
-
-            if (FCALLS > 0 || FCALLS > neg_o_reds) {
-                FCALLS--;
-                goto fib_pre1;
-            } else {
-                HEAVY_SWAPOUT;
-                return 1;
-            }
+            HEAVY_SWAPOUT;
+            // *IP = fibExport->addressv[erts_active_code_ix()];
+            *IP = I;
+            return 0;
         }
 
         fib_pre6: { // i_increment_yWd y(0) -2 x(1)
@@ -1190,7 +1251,7 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
               goto fib_pre7;
             }
             HEAVY_SWAPOUT;
-            return 2;
+            return 3;
         }
 
         fib_pre7: { // move_shift_xxy x(1) x(0) y(0)
@@ -1201,17 +1262,27 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
             goto fib_pre8;
         }
 
+        // fib_pre8: { // i_call_f 'Elixir.Fib':fib/1
+        //     // erts_printf("8: %T %T %T\n", x(0), x(1), y(1));
+        //     c_p->inner_cp = &&fib_pre9;
+
+        //     if (FCALLS > 0 || FCALLS > neg_o_reds) {
+        //         FCALLS--;
+        //         goto fib_pre1;
+        //     } else {
+        //         HEAVY_SWAPOUT;
+        //         return 2;
+        //     }
+        // }
+
         fib_pre8: { // i_call_f 'Elixir.Fib':fib/1
             // erts_printf("8: %T %T %T\n", x(0), x(1), y(1));
+            c_p->cp = I+1;
             c_p->inner_cp = &&fib_pre9;
-
-            if (FCALLS > 0 || FCALLS > neg_o_reds) {
-                FCALLS--;
-                goto fib_pre1;
-            } else {
-                HEAVY_SWAPOUT;
-                return 1;
-            }
+            HEAVY_SWAPOUT;
+            // *IP = fibExport->addressv[erts_active_code_ix()];
+            *IP = I;
+            return 0;
         }
 
         fib_pre9: { // i_plus_yxjd y(0) x(0) j(0) x(0)
@@ -1259,15 +1330,16 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
               reg[0] = PlusOp1;
               reg[1] = PlusOp2;
               HEAVY_SWAPOUT;
-              I = handle_error(c_p, I, reg, &bif_export[BIF_splus_2]->info.mfa);
-              return 3;
+              *IP = handle_error(c_p, I, reg, &bif_export[BIF_splus_2]->info.mfa);
+              return 4;
             } while (0);
         }
 
         fib_pre10: { // deallocate_return_Q 1
             // erts_printf("10: %T\n", x(0));
-            int words_to_pop = 16; // Conversion from I[1];
-            BeamInstr* tmp_cp = cp_val(*E);
+            int words_to_pop = 24; // Conversion from I[1];
+            *IP = cp_val(*E);
+            BeamInstr* tmp_cp = cp_val(y(2));
             E = ADD_BYTE_OFFSET(E, words_to_pop);
             CHECK_TERM(x(0));
             if(tmp_cp) {
@@ -1275,7 +1347,7 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
                 goto *tmp_cp;
             } else {
                 HEAVY_SWAPOUT;
-                return 0;
+                return 1;
             }
         }
 }

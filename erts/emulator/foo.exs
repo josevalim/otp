@@ -1,7 +1,7 @@
 defmodule Fib do
   def fib(0), do: 0
   def fib(1), do: 1
-  def fib(a), do: fib(a - 1) + fib(a - 2)
+  def fib(a), do: Fib.fib(a - 1) + Fib.fib(a - 2)
 end
 
 :erts_debug.df(Fib, :fib, 1)

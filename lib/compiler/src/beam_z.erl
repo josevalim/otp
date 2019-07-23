@@ -40,7 +40,8 @@ function({function,fib,1,_,_}, _NoGetHdTl) ->
         {line,[{location,"foo.exs",2}]},
         {func_info,{atom,'Elixir.Fib'},{atom,fib},1},
         {label,8},
-        fib_pre
+        fib_pre,
+        fib_pos
         % {select_val,{x,0},{f,10},{list,[{integer,1},{f,9},{integer,0},{f,9}]}},
         % {label,9},
         % return,
