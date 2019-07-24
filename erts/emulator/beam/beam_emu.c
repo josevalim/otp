@@ -404,7 +404,7 @@ static Eterm erts_gc_update_map_exact(Process* p, Eterm* reg, Uint live,
                               Uint n, Eterm* new_p) ERTS_NOINLINE;
 static Eterm get_map_element(Eterm map, Eterm key);
 static Eterm get_map_element_hash(Eterm map, Eterm key, Uint32 hx);
-static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds);
+static int fib(Process* c_p, Eterm* reg, BeamInstr **IP, int neg_o_reds);
 
 /*
  * Functions not directly called by process_main(). OK to inline.
@@ -776,19 +776,20 @@ void process_main(Eterm * x_reg_array, FloatDef* f_reg_array)
 
 OpCase(fib_pre): {
     HEAVY_SWAPOUT;
-    int result = fib(c_p, reg, I, neg_o_reds);
+    BeamInstr* Itmp = I;
+    int result = fib(c_p, reg, &Itmp, neg_o_reds);
     HEAVY_SWAPIN;
     switch(result) {
       case 0:
         SET_I(c_p->cp);
         c_p->cp = 0;
         DispatchReturn;
-        break;
       case 1:
         goto context_switch;
       case 2:
         goto find_func_info;
       case 3:
+        I = Itmp;
         goto post_error_handling;
     };
  }
@@ -1024,7 +1025,8 @@ OpCase(fib_pre): {
     }
 }
 
-static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
+static int fib(Process* c_p, Eterm* reg, BeamInstr** IP, int neg_o_reds) {
+    BeamInstr* I = *IP;
     register Eterm* HTOP REG_htop;
     register Eterm* E REG_stop;
     register Sint FCALLS REG_fcalls;
@@ -1259,7 +1261,7 @@ static int fib(Process* c_p, Eterm* reg, BeamInstr *I, int neg_o_reds) {
               reg[0] = PlusOp1;
               reg[1] = PlusOp2;
               HEAVY_SWAPOUT;
-              I = handle_error(c_p, I, reg, &bif_export[BIF_splus_2]->info.mfa);
+              *IP = handle_error(c_p, I, reg, &bif_export[BIF_splus_2]->info.mfa);
               return 3;
             } while (0);
         }
