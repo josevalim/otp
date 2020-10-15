@@ -243,7 +243,10 @@
       <tag><c><![CDATA[{cache_size, Size}.]]></c></tag>
       <item>
         <p><c><![CDATA[Size = integer()]]></c></p>
-        <p>Set the resolver cache size. Defaults to 100 DNS records.</p>
+	<p>Set the resolver cache size for <c>dns</c> lookups.
+	  The cache for <c>native</c> lookups should be configured at the Operating System level.
+	  Defaults to 100 DNS records.
+	</p>
       </item>
       <tag><c><![CDATA[{cache_refresh, Time}.]]></c></tag>
         <item>
