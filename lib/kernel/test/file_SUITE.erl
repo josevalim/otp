@@ -4092,6 +4092,13 @@ do_large_file(Name) ->
     {ok,R}   = ?FILE_MODULE:read(F1, L+1),
     ok       = ?FILE_MODULE:close(F1),
 
+    %% Reopen the file try to read all of it; used to fail on macOS
+    %% We open with binary in order to not get a memory explosion.
+    {ok, F2} = ?FILE_MODULE:open(Name, [raw,read,binary]),
+    {ok, B}  = ?FILE_MODULE:read(F2, P),
+    P        = byte_size(B),
+    ok       = ?FILE_MODULE:close(F2),
+
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
