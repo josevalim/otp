@@ -535,6 +535,8 @@ handle_request(State = #state{ xn = OrigXn, unicode = U }, {insert, Chars}) ->
      NewState};
 handle_request(State, beep) ->
     {<<7>>, State};
+handle_request(State, clear) ->
+    {<<"\e[H\e[2J">>, State};
 handle_request(State, Req) ->
     erlang:display({unhandled_request, Req}),
     {"", State}.

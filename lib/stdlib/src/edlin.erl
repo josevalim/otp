@@ -112,9 +112,8 @@ edit([C|Cs], P, {Bef,Aft}, Prefix, Rs0) ->
 	new_line ->
 	    {done, get_line(Bef, Aft ++ "\n"), Cs,
 	     reverse(Rs0, [{move_rel,cp_len(Aft)},{put_chars,unicode,"\n"}])};
-	redraw_line ->
-	    Rs1 = erase(P, Bef, Aft, Rs0),
-	    Rs = redraw(P, Bef, Aft, Rs1),
+	clear ->
+	    Rs = redraw(P, Bef, Aft, [clear | Rs0]),
 	    edit(Cs, P, {Bef,Aft}, none, Rs);
 	tab_expand ->
 	    {expand, Bef, Cs,
@@ -192,7 +191,7 @@ key_map($\^F, none) -> forward_char;
 key_map($\^H, none) -> backward_delete_char;
 key_map($\t, none) -> tab_expand;
 key_map($\^K, none) -> kill_line;
-key_map($\^L, none) -> redraw_line;
+key_map($\^L, none) -> clear;
 key_map($\n, none) -> new_line;
 key_map($\r, none) -> new_line;
 key_map($\^T, none) -> transpose_char;
