@@ -914,19 +914,8 @@ replace_dyn_erl(true, {create_dir, ErtsDir, ErtsFiles}) ->
                     {true, {create_dir, ErtsDir, ErtsFiles2}}
             end;
         [{copy_file, DynErlExe}] ->
-            %% Replace erl with dyn_erl
-            ErlExe = "erl" ++ filename:extension(DynErlExe),
-            BinFiles2 = lists:keydelete(DynErlExe, 2, BinFiles),
-            DynErlExe2 = filename:join([ErtsDir, "bin", DynErlExe]),
-            BinFiles3 = lists:keyreplace(ErlExe,
-					 2,
-					 BinFiles2,
-					 {copy_file, ErlExe, DynErlExe2}),
-            ErtsFiles2 = lists:keyreplace("bin",
-					  2,
-					  ErtsFiles,
-					  {create_dir, "bin", BinFiles3}),
-            {true, {create_dir, ErtsDir, ErtsFiles2}}
+            %% erl is relocatable by default with dyn_erl --realpath
+            true
     end.
 
 spec_bin_files(Sys, AllSysFiles, StrippedSysFiles, RelFiles, InclRegexps) ->

@@ -599,7 +599,7 @@ build_image(Dir) ->
         "WORKDIR /opt/lambda\n"
         "COPY lambda.tar.gz /tmp\n"
         "RUN tar -zxvf /tmp/lambda.tar.gz -C /opt/lambda\n"
-        "ENTRYPOINT [\"/opt/lambda/erts-" ++ erlang:system_info(version) ++ "/bin/dyn_erl\", \"-boot\", \"/opt/lambda/releases/1.0.0/start\"]\n",
+        "ENTRYPOINT [\"/opt/lambda/erts-" ++ erlang:system_info(version) ++ "/bin/erl\", \"-boot\", \"/opt/lambda/releases/1.0.0/start\"]\n",
     ok = file:write_file(BuildScript, Dockerfile),
     Output = os:cmd("docker build -t lambda " ++ Dir),
     ct:pal("Build result: ~s~n", [Output]).
