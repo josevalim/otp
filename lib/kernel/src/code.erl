@@ -199,13 +199,24 @@ ensure_loaded(Mod) when is_atom(Mod) ->
 -spec load_abs(Filename) -> load_ret() when
       Filename :: file:filename().
 load_abs(File) when is_list(File); is_atom(File) ->
-    Mod = list_to_atom(filename:basename(File)),
-    call({load_abs,File,Mod}).
+    load_abs(File, list_to_atom(filename:basename(File))).
 
 %% XXX Filename is also an atom(), e.g. 'cover_compiled'
 -spec load_abs(Filename :: loaded_filename(), Module :: module()) -> load_ret().
 load_abs(File, M) when (is_list(File) orelse is_atom(File)), is_atom(M) ->
-    call({load_abs,File,M}).
+    case modp(File) of
+        true ->
+            FileName0 = lists:concat([File, objfile_extension()]),
+            FileName = code_server:absname(FileName0),
+            case erl_prim_loader:get_file(FileName) of
+                {ok,Bin,_} ->
+                    load_module(M, FileName, Bin);
+                error ->
+                    {error, nofile}
+            end;
+        false ->
+            {error,badarg}
+    end.
 
 %% XXX Filename is also an atom(), e.g. 'cover_compiled'
 -spec load_binary(Module, Filename, Binary) ->
@@ -216,7 +227,27 @@ load_abs(File, M) when (is_list(File) orelse is_atom(File)), is_atom(M) ->
       What :: badarg | load_error_rsn().
 load_binary(Mod, File, Bin)
   when is_atom(Mod), (is_list(File) orelse is_atom(File)), is_binary(Bin) ->
-    call({load_binary,Mod,File,Bin}).
+    case modp(File) of
+        true ->
+            case erlang:module_loaded(Mod) of
+                true -> purge(Mod);
+                false -> ok
+            end,
+            load_module(Mod, File, Bin);
+        false ->
+            {error,badarg}
+    end.
+
+modp(Atom) when is_atom(Atom) -> true;
+modp(List) when is_list(List) -> int_list(List);
+modp(_)                       -> false.
+
+int_list([H|T]) when is_integer(H) -> int_list(T);
+int_list([_|_])                    -> false;
+int_list([])                       -> true.
+
+load_module(Mod, File, Bin) ->
+    call({load_module, Mod, File, Bin}).
 
 -spec load_native_partial(Module :: module(), Binary :: binary()) -> load_ret().
 load_native_partial(Mod, Bin) when is_atom(Mod), is_binary(Bin) ->
@@ -234,11 +265,14 @@ delete(Mod) when is_atom(Mod) -> call({delete,Mod}).
 
 -spec purge(Module) -> boolean() when
       Module :: module().
-purge(Mod) when is_atom(Mod) -> call({purge,Mod}).
+purge(Mod) when is_atom(Mod) ->
+    {_WasOld, DidKill} = erts_code_purger:purge(Mod),
+    DidKill.
 
 -spec soft_purge(Module) -> boolean() when
       Module :: module().
-soft_purge(Mod) when is_atom(Mod) -> call({soft_purge,Mod}).
+soft_purge(Mod) when is_atom(Mod) ->
+    erts_code_purger:soft_purge(Mod).
 
 -spec is_loaded(Module) -> {'file', Loaded} | false when
       Module :: module(),

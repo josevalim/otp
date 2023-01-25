@@ -23,6 +23,7 @@
 
 -export([start_link/1,
 	 call/1,
+         absname/1,
 	 system_code_change/4,
 	 error_msg/2, info_msg/2
 	]).
@@ -283,16 +284,8 @@ handle_call(get_path, _From, S) ->
     {reply,S#state.path,S};
 
 %% Messages to load, delete and purge modules/files.
-handle_call({load_abs,File,Mod}, From, S) when is_atom(Mod) ->
-    case modp(File) of
-	false ->
-	    {reply,{error,badarg},S};
-	true ->
-	    load_abs(File, Mod, From, S)
-    end;
-
-handle_call({load_binary,Mod,File,Bin}, From, S) when is_atom(Mod) ->
-    do_load_binary(Mod, File, Bin, From, S);
+handle_call({load_module,Mod,File,Bin}, From, S) when is_atom(Mod) ->
+    try_load_module(File, Mod, Bin, From, S);
 
 handle_call({ensure_loaded,Mod}, From, St) when is_atom(Mod) ->
     case erlang:module_loaded(Mod) of
@@ -313,11 +306,6 @@ handle_call({delete,Mod}, _From, St) when is_atom(Mod) ->
 	    {reply,false,St}
     end;
 
-handle_call({purge,Mod}, _From, St) when is_atom(Mod) ->
-    {reply,do_purge(Mod),St};
-
-handle_call({soft_purge,Mod}, _From, St) when is_atom(Mod) ->
-    {reply,do_soft_purge(Mod),St};
 
 handle_call({is_loaded,Mod}, _From, St) when is_atom(Mod) ->
     {reply,is_loaded(Mod, St#state.moddb),St};
@@ -1082,33 +1070,6 @@ add_paths(Where,[Dir|Tail],Path,NameDb) ->
 add_paths(_,_,Path,_) ->
     {ok,Path}.
 
-do_load_binary(Module, File, Binary, From, St) ->
-    case modp(File) andalso is_binary(Binary) of
-	true ->
-	    case erlang:module_loaded(Module) of
-		true -> do_purge(Module);
-		false -> ok
-	    end,
-	    try_load_module(File, Module, Binary, From, St);
-	false ->
-	    {reply,{error,badarg},St}
-    end.
-
-modp(Atom) when is_atom(Atom) -> true;
-modp(List) when is_list(List) -> int_list(List);
-modp(_)                       -> false.
-
-load_abs(File, Mod, From, St) ->
-    Ext = objfile_extension(),
-    FileName0 = lists:concat([File, Ext]),
-    FileName = absname(FileName0),
-    case erl_prim_loader:get_file(FileName) of
-	{ok,Bin,_} ->
-	    try_load_module(FileName, Mod, Bin, From, St);
-	error ->
-	    {reply,{error,nofile},St}
-    end.
-
 try_load_module(File, Mod, Bin, From, St) ->
     Action = fun(_, S) ->
 		     try_load_module_1(File, Mod, Bin, From, S)
@@ -1238,13 +1199,6 @@ is_loaded(M, Db) ->
 	[{M,File}] -> {file,File};
 	[] -> false
     end.
-
-do_purge(Mod) ->
-    {_WasOld, DidKill} = erts_code_purger:purge(Mod),
-    DidKill.
-
-do_soft_purge(Mod) ->
-    erts_code_purger:soft_purge(Mod).
 
 is_dir(Path) ->
     case erl_prim_loader:read_file_info(Path) of
