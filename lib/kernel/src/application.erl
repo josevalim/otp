@@ -117,28 +117,36 @@ unload(Application) ->
     application_controller:unload_application(Application).
 
 
--spec ensure_all_started(Application) -> {'ok', Started} | {'error', Reason} when
-      Application :: atom(),
+-spec ensure_all_started(Applications) -> {'ok', Started} | {'error', Reason} when
+      Applications :: atom() | [atom()],
       Started :: [atom()],
       Reason :: term().
 ensure_all_started(Application) ->
     ensure_all_started(Application, temporary).
 
--spec ensure_all_started(Application, Type) -> {'ok', Started} | {'error', Reason} when
-      Application :: atom(),
+-spec ensure_all_started(Applications, Type) -> {'ok', Started} | {'error', AppReason} when
+      Applications :: atom() | [atom()],
       Type :: restart_type(),
       Started :: [atom()],
-      Reason :: term().
-ensure_all_started(Application, Type) ->
-    case ensure_all_started([Application], [], Type, []) of
-	{ok, Started} ->
-	    {ok, lists:reverse(Started)};
-	{error, Reason, Started} ->
-	    _ = [stop(App) || App <- Started],
-	    {error, Reason}
+      AppReason :: {atom(), term()}.
+ensure_all_started(Application, Type) when is_atom(Application) ->
+    ensure_all_started([Application], Type);
+ensure_all_started(Applications, Type) when is_list(Applications) ->
+    case ensure_all_enqueued(Applications, [], #{}, []) of
+        {ok, DAG, _Pending} ->
+            ForTraversal = maps:to_list(DAG),
+            ReqIDs = gen_server:reqids_new(),
+            ensure_dag_started(ForTraversal, ReqIDs, [], [], Type);
+        ErrorAppReason ->
+            ErrorAppReason
     end.
 
-ensure_all_started([App | Apps], OptionalApps, Type, Started) ->
+ensure_all_enqueued([App | Apps], Optional, DAG, Pending)
+  when is_map_key(App, DAG) ->
+    %% We already traversed the application, so only add it as pending
+    ensure_all_enqueued(Apps, Optional, DAG, [App | Pending]);
+
+ensure_all_enqueued([App | Apps], Optional, DAG, Pending) when is_atom(App) ->
     %% In case the app is already running, we just skip it instead
     %% of attempting to start all of its children - which would
     %% have already been loaded and started anyway.
@@ -146,44 +154,93 @@ ensure_all_started([App | Apps], OptionalApps, Type, Started) ->
         false ->
             case ensure_loaded(App) of
                 {ok, Name} ->
-                    case ensure_started(Name, App, Type, Started) of
-                        {ok, NewStarted} ->
-                            ensure_all_started(Apps, OptionalApps, Type, NewStarted);
-                        Error ->
-                            Error
+                    case enqueue_app(Name, App, DAG) of
+                        {ok, NewDAG} ->
+                            NewPending = [App | Pending],
+                            ensure_all_enqueued(Apps, Optional, NewDAG, NewPending);
+                        ErrorAppReason ->
+                            ErrorAppReason
                     end;
                 {error, {"no such file or directory", _} = Reason} ->
-                    case lists:member(App, OptionalApps) of
+                    case lists:member(App, Optional) of
                         true ->
-                            ensure_all_started(Apps, OptionalApps, Type, Started);
+                            ensure_all_enqueued(Apps, Optional, DAG, Pending);
                         false ->
-                            {error, {App, Reason}, Started}
+                            {error, {App, Reason}}
                     end;
                 {error, Reason} ->
-                    {error, {App, Reason}, Started}
+                    {error, {App, Reason}}
             end;
         true ->
-            ensure_all_started(Apps, OptionalApps, Type, Started)
+            ensure_all_enqueued(Apps, Optional, DAG, Pending)
     end;
-ensure_all_started([], _OptionalApps, _Type, Started) ->
-    {ok, Started}.
+ensure_all_enqueued([], _Optional, DAG, Pending) ->
+    {ok, DAG, Pending}.
 
-ensure_started(Name, App, Type, Started) ->
+enqueue_app(Name, App, DAG) ->
     {ok, ChildApps} = get_key(Name, applications),
     {ok, OptionalApps} = get_key(Name, optional_applications),
 
-    case ensure_all_started(ChildApps, OptionalApps, Type, Started) of
-	{ok, NewStarted} ->
-	    case application_controller:start_application(Name, Type) of
-		ok ->
-		    {ok, [App | NewStarted]};
-		{error, {already_started, App}} ->
-		    {ok, NewStarted};
-		{error, Reason} ->
-		    {error, {App, Reason}, NewStarted}
-	    end;
-	Error ->
-	    Error
+    case ensure_all_enqueued(ChildApps, OptionalApps, DAG, []) of
+        {ok, NewDAG, Pending} ->
+            {ok, NewDAG#{App => Pending}};
+        ErrorAppReason ->
+            ErrorAppReason
+    end.
+
+ensure_dag_started([], ReqIDs, _Done, Started, _Type) ->
+    wait_all_enqueued(ReqIDs, Started, false);
+ensure_dag_started(Pending0, ReqIDs0, Done, Started0, Type) ->
+    {Pending1, ReqIDs1} = start_dag_leaves(Pending0, ReqIDs0, [], Done, Type),
+
+    case wait_one_enqueued(ReqIDs1, Started0) of
+        {ok, App, ReqIDs2, Started1} ->
+            ensure_dag_started(Pending1, ReqIDs2, [App], Started1, Type);
+        {error, AppReason, ReqIDs2} ->
+            wait_all_enqueued(ReqIDs2, Started0, AppReason)
+    end.
+
+start_dag_leaves([{App, Children} | Rest], ReqIDs, Acc, Done, Type) ->
+    case Children -- Done of
+        [] ->
+            Req = application_controller:start_application_request(App, Type),
+            NewReqIDs = gen_server:reqids_add(Req, App, ReqIDs),
+            start_dag_leaves(Rest, NewReqIDs, Acc, Done, Type);
+        NewChildren ->
+            NewAcc = [{App, NewChildren} | Acc],
+            start_dag_leaves(Rest, ReqIDs, NewAcc, Done, Type)
+    end;
+start_dag_leaves([], ReqIDs, Acc, _Done, _Type) ->
+    {Acc, ReqIDs}.
+
+wait_one_enqueued(ReqIDs0, Started) ->
+    case gen_server:wait_response(ReqIDs0, infinity, true) of
+        {{reply, ok}, App, ReqIDs1} ->
+            {ok, App, ReqIDs1, [App | Started]};
+        {{reply, {error, {already_started, App}}}, App, ReqIDs1} ->
+            {ok, App, ReqIDs1, Started};
+        {{reply, {error, Reason}}, App, ReqIDs1} ->
+            {error, {App, Reason}, ReqIDs1};
+        {{error, {Reason, _Ref}}, _App, _ReqIDs1} ->
+            exit(Reason);
+        no_request ->
+            exit(deadlock)
+    end.
+
+wait_all_enqueued(ReqIDs0, Started0, LastAppReason) ->
+    case gen_server:reqids_size(ReqIDs0) of
+        0 when LastAppReason =:= false ->
+            {ok, lists:reverse(Started0)};
+        0 ->
+            _ = [stop(App) || App <- Started0],
+            {error, LastAppReason};
+        _ ->
+            case wait_one_enqueued(ReqIDs0, Started0) of
+                {ok, _App, ReqIDs1, Started1} ->
+                    wait_all_enqueued(ReqIDs1, Started1, LastAppReason);
+                {error, NewAppReason, ReqIDs1} ->
+                    wait_all_enqueued(ReqIDs1, Started0, NewAppReason)
+            end
     end.
 
 -spec start(Application) -> 'ok' | {'error', Reason} when

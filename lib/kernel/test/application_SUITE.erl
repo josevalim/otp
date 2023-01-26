@@ -1007,6 +1007,19 @@ ensure_all_started(_Conf) ->
     ok = application:stop(app10),
     ok = application:unload(app10),
 
+    %% Starts several
+    {ok, StartedSeveral} = application:ensure_all_started([app1, app10]),
+    [app1,app10,app9] = lists:sort(StartedSeveral),
+    {app1, _, _} = lists:keyfind(app1, 1, application:which_applications()),
+    {app9, _, _} = lists:keyfind(app9, 1, application:which_applications()),
+    {app10, _, _} = lists:keyfind(app10, 1, application:which_applications()),
+    ok = application:stop(app1),
+    ok = application:unload(app1),
+    ok = application:stop(app9),
+    ok = application:unload(app9),
+    ok = application:stop(app10),
+    ok = application:unload(app10),
+
     %% Deeper failure chain. We have the following dependencies:
     %% app_chain_error -> app_chain_error2
     %% app_chain_error2 -> app10
