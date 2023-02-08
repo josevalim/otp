@@ -507,15 +507,18 @@ add_loader_path(IPath0,Mode) ->
         embedded ->
             [{P, CacheBootPaths} || P <- strip_path(PrimP0, Mode)];  % i.e. only normalize
         _ ->
-            Pa0 = get_arg(pa),
-            Pz0 = get_arg(pz),
+            Flags = init:get_arguments(),
+            Pa0 = get_flag_paths(pa, pac, Flags),
+            Pz0 = get_flag_paths(pz, pzc, Flags),
 
-            Pa = patch_path(Pa0),
-            Pz = patch_path(Pz0),
-	    PrimP = patch_path(PrimP0),
-	    IPath = patch_path(IPath0),
+            %% TODO: Once code_path_choice() is removed,
+            %% there is no need to call this function.
+            Pa = normalize_pa_pz(Pa0),
+            Pz = normalize_pa_pz(Pz0),
 
-            Path0 = exclude_pa_pz(PrimP,Pa,Pz),
+            %% PrimP is normalized by init but not stripped.
+            %% IPath is by definition normalized and stripped.
+            Path0 = exclude_pa_pz(PrimP, Pa, Pz),
             Path1 = strip_path(Path0, Mode),
             Path2 = merge_path(Path1, IPath, []),
             Path3 = [{P, CacheBootPaths} || P <- Path2],
@@ -528,23 +531,30 @@ cache_boot_paths() ->
         _ -> cache
     end.
 
-patch_path(Path) ->
-    case check_path(Path) of
-	{ok, NewPath} -> NewPath;
-	{error, _Reason} -> Path
-    end.	    
-
 %% As the erl_prim_loader path includes the -pa and -pz
 %% directories they have to be removed first !!
-exclude_pa_pz(P0,Pa,Pz) ->
-    P1 = excl(Pa, P0),
-    P = excl(Pz, lists:reverse(P1)),
+exclude_pa_pz(P0, Pa, []) ->
+    exclude_pa_pz(Pa, P0);
+exclude_pa_pz(P0, Pa, Pz) ->
+    P1 = exclude_pa_pz(Pa, P0),
+    P = exclude_pa_pz(Pz, lists:reverse(P1)),
     lists:reverse(P).
 
-excl([], P) -> 
+exclude_pa_pz([], P) ->
     P;
-excl([D|Ds], P) ->
-    excl(Ds, lists:delete(D, P)).
+exclude_pa_pz([{D,_}|Ds], P) ->
+    exclude_pa_pz(Ds, lists:delete(D, P)).
+
+normalize_pa_pz([{P0, Cache}|Ps]) ->
+    P = filename:join([P0]), % Normalize
+    case check_path([P]) of
+        {ok, [NewP]} ->
+            [{NewP,Cache}|normalize_pa_pz(Ps)];
+        _ ->
+            [{P,Cache}|normalize_pa_pz(Ps)]
+    end;
+normalize_pa_pz(_, _) ->
+    [].
 
 %%
 %% Keep only 'valid' paths in code server.
@@ -588,18 +598,27 @@ merge_path1([P|Path],IPath,Acc) ->
 merge_path1(_,IPath,Acc) ->
     lists:reverse(Acc) ++ IPath.
 
+add_pa_pz(Path0, Patha, []) ->
+    add_pa_pz(Patha,Path0);
 add_pa_pz(Path0, Patha, Pathz) ->
-    {_,Path1} = add_paths(first,Patha,Path0,?CACHE_DEFAULT,false),
-    {_,Path2} = add_paths(first,Pathz,lists:reverse(Path1),?CACHE_DEFAULT,false),
+    Path1 = add_pa_pz(Patha,Path0),
+    Path2 = add_pa_pz(Pathz,lists:reverse(Path1)),
     lists:reverse(Path2).
 
-get_arg(Arg) ->
-    case init:get_argument(Arg) of
-	{ok, Values} ->
-	    lists:append(Values);
-	_ ->
-	    []
-    end.
+add_pa_pz([{Dir,Cache}|Tail],Path) ->
+    {_,NPath} = add_path(first,Dir,Path,Cache,false),
+    add_pa_pz(Tail,NPath);
+add_pa_pz(_,_,Path,_) ->
+    Path.
+
+get_flag_paths(F,FC,[{F,V}|Flags]) ->
+    [{V, nocache}|get_flag_paths(F,FC,Flags)];
+get_flag_paths(F,FC,[{FC,V}|Flags]) ->
+    [{V, cache}|get_flag_paths(F,FC,Flags)];
+get_flag_paths(F,FC,[_|Flags]) ->
+    get_flag_paths(F,FC,Flags);
+get_flag_paths(_F,_FC,[]) ->
+    [].
 
 %%
 %% Exclude other versions of Dir or duplicates.
