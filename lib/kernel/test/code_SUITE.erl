@@ -42,6 +42,7 @@
          on_load_trace_on_load/1,
 	 on_load_purge/1, on_load_self_call/1, on_load_pending/1,
 	 on_load_deleted/1, on_load_deadlock/1,
+         on_load_deadlock_load_binary_GH7466/1, on_load_deadlock_ensure_loaded_GH7466/1,
 	 big_boot_embedded/1,
          module_status/1,
 	 get_mode/1, code_path_cache/1,
@@ -78,7 +79,8 @@ all() ->
      on_load_embedded, on_load_errors,
      {group, sequence},
      on_load_purge, on_load_self_call, on_load_pending,
-     on_load_deleted, on_load_deadlock,
+     on_load_deleted, on_load_deadlock, on_load_deadlock_load_binary_GH7466,
+     on_load_deadlock_ensure_loaded_GH7466,
      module_status,
      big_boot_embedded, get_mode, normalized_paths,
      mult_embedded_flags].
@@ -1989,6 +1991,78 @@ on_load_deadlock(Config) ->
 
     code:del_path(Dir),
     ok.
+
+on_load_deadlock_load_binary_GH7466(Config) ->
+    Tree = ?Q(["-module(foo).\n",
+               "-on_load(init_module/0).\n",
+               "-export([bar/0]).\n",
+               "bar() -> ok.\n",
+               "init_module() ->\n",
+               "    timer:sleep(1000).\n"]),
+    merl:print(Tree),
+
+    %% Compiles the form, does not load binary
+    {ok,Mod,Bin} = compile:forms(Tree),
+    Dir = proplists:get_value(priv_dir, Config),
+    File = filename:join(Dir, "foo.beam"),
+    ok = file:write_file(File, Bin),
+    code:add_path(Dir),
+
+    Self = self(),
+    LoadBin = fun() ->
+                      _ = code:load_binary(Mod, "foo.beam", Bin),
+                      Self ! {done, self()},
+                      Self
+              end,
+    %% this deadlocks in OTP-26
+    PidX = spawn(LoadBin),
+    PidY = spawn(LoadBin),
+    Self = LoadBin(),
+    ok = receiver(PidX),
+    ok = receiver(PidY),
+    ok = receiver(Self),
+
+    code:del_path(Dir),
+    ok.
+
+on_load_deadlock_ensure_loaded_GH7466(Config) ->
+    Tree = ?Q(["-module(foo).\n",
+               "-on_load(init_module/0).\n",
+               "-export([bar/0]).\n",
+               "bar() -> ok.\n",
+               "init_module() ->\n",
+               "    timer:sleep(1000), bar().\n"]),
+    _ = merl:print(Tree),
+
+    %% Compiles the form, does not load binary
+    {ok,Mod,Bin} = compile:forms(Tree),
+    Dir = proplists:get_value(priv_dir, Config),
+    File = filename:join(Dir, "foo.beam"),
+    ok = file:write_file(File, Bin),
+    code:add_path(Dir),
+
+    Self = self(),
+    EnsureLoaded = fun() ->
+                           _ = code:ensure_loaded(Mod),
+                           Self ! {done, self()},
+                           Self
+                   end,
+    Pid = spawn(EnsureLoaded),
+    Pid2 = spawn(EnsureLoaded),
+    Self = EnsureLoaded(),
+    ok = receiver(Pid),
+    ok = receiver(Pid2),
+    ok = receiver(Self),
+
+    code:del_path(Dir),
+    ok.
+
+receiver(Pid) ->
+    receive
+        {done, Pid} -> ok
+    after 10_000 ->
+            it_deadlocked
+    end.
 
 delete_before_reload(Mod, Reload) ->
     false = check_old_code(Mod),
