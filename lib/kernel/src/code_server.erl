@@ -41,9 +41,21 @@
                 path_cache = #{} :: #{integer() => #{string() => []}},
 		moddb :: ets:table(),
 		namedb :: ets:table(),
-                on_load = #{} :: #{module() => tuple()},
-                loading = #{} :: #{module() => [{term(), pid()}]}}).
+                on_load = #{} :: #{module() => {on_load_file(), client_pid(), on_load_pid()}},
+                loading = #{} :: #{module() => [{loading_action(), client_pid()}]}}).
 -type state() :: #state{}.
+-type loading_action() :: load_module | get_object_code | finish_on_load.
+
+%% Note: this type comes from code:load_binary/3 (type was not exported)
+-type on_load_file() :: 'cover_compiled' | 'preloaded' | file:filename().
+
+%% client-side pid() (i.e., process that call code:load_binary/et al),
+%% to which 'code_server' needs to send a response when on_load finishes.
+-type client_pid() :: pid().
+
+%% This pid() refers to the spawned process calling
+%% 'erlang:call_on_load_function(Mod)'
+-type on_load_pid() :: pid().
 
 -spec start_link([term()]) -> {'ok', pid()}.
 start_link(Args) ->
