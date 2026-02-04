@@ -982,8 +982,9 @@ void BeamModuleAssembler::emit_bif_map_size(const ArgLabel &Fail,
 
     a.bind(good_map);
     {
-        ERTS_CT_ASSERT(offsetof(flatmap_t, size) == sizeof(Eterm));
-        a.ldur(TMP1, emit_boxed_val(boxed_ptr, sizeof(Eterm)));
+        /* Size is now encoded in the header (upper 16 bits) */
+        a.ldur(TMP1, emit_boxed_val(boxed_ptr, offsetof(flatmap_t, thing_word)));
+        a.lsr(TMP1, TMP1, imm(16));
         mov_imm(dst.reg, _TAG_IMMED1_SMALL);
         a.bfi(dst.reg, TMP1, imm(_TAG_IMMED1_SIZE), imm(SMALL_BITS));
         flush_var(dst);

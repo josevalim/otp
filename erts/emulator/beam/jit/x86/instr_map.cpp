@@ -215,7 +215,9 @@ void BeamGlobalAssembler::emit_hashmap_get_element() {
 void BeamGlobalAssembler::emit_flatmap_get_element() {
     Label fail = a.newLabel(), loop = a.newLabel();
 
-    a.mov(RETd, emit_boxed_val(ARG1, offsetof(flatmap_t, size), 4));
+    /* Size is now encoded in the header (upper 16 bits) */
+    a.mov(RETd, emit_boxed_val(ARG1, offsetof(flatmap_t, thing_word), 4));
+    a.shr(RETd, imm(16));
     a.mov(ARG4, emit_boxed_val(ARG1, offsetof(flatmap_t, keys)));
 
     emit_ptr_val(ARG4, ARG4);
@@ -277,7 +279,7 @@ void BeamModuleAssembler::emit_i_new_small_map_lit(const ArgRegister &Dst,
                                                    const ArgLiteral &Keys,
                                                    const ArgWord &Size,
                                                    const Span<ArgVal> &args) {
-    ASSERT(Size.get() == args.size());
+    ASSERT(MAP_HEADER_VAL(Size.get()) == args.size());
 
     emit_gc_test(ArgWord(0),
                  ArgWord(args.size() + MAP_HEADER_FLATMAP_SZ + 1),
@@ -285,7 +287,6 @@ void BeamModuleAssembler::emit_i_new_small_map_lit(const ArgRegister &Dst,
 
     std::vector<ArgVal> data;
     data.reserve(args.size() + MAP_HEADER_FLATMAP_SZ + 1);
-    data.push_back(ArgWord(MAP_HEADER_FLATMAP));
     data.push_back(Size);
     data.push_back(Keys);
 
@@ -459,8 +460,10 @@ void BeamModuleAssembler::emit_i_get_map_elements(const ArgLabel &Fail,
         a.jne(generic);
 
         ERTS_CT_ASSERT(MAP_SMALL_MAP_LIMIT <= ERTS_UINT32_MAX);
+        /* Size is now encoded in the header (upper 16 bits) */
         a.mov(RETd,
-              emit_boxed_val(ARG1, offsetof(flatmap_t, size), sizeof(Uint32)));
+              emit_boxed_val(ARG1, offsetof(flatmap_t, thing_word), sizeof(Uint32)));
+        a.shr(RETd, imm(16));
         a.mov(ARG2, emit_boxed_val(ARG1, offsetof(flatmap_t, keys)));
 
         emit_ptr_val(ARG2, ARG2);

@@ -299,7 +299,7 @@ gen.new_small_map_lit(Dst, Live, Size, Rest) {
     op->a[2].type = TAG_q;
     op->a[2].val = lit;
     op->a[3].type = TAG_u;
-    op->a[3].val = size / 2;
+    op->a[3].val = make_flatmap_header(size / 2);
 
     return op;
 }

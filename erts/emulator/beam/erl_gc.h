@@ -70,7 +70,7 @@ ERTS_GLB_INLINE Eterm* move_boxed(Eterm *ERTS_RESTRICT ptr, Eterm hdr, Eterm **h
     switch ((hdr) & _HEADER_SUBTAG_MASK) {
     case MAP_SUBTAG:
         if (is_flatmap_header(hdr)) {
-            nelts += flatmap_get_size(ptr) + 1;
+            nelts += 1 + flatmap_get_size(ptr);
         } else {
             nelts += hashmap_bitcount(MAP_HEADER_VAL(hdr));
         }
