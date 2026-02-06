@@ -982,8 +982,26 @@ void BeamModuleAssembler::emit_bif_map_size(const ArgLabel &Fail,
 
     a.bind(good_map);
     {
-        ERTS_CT_ASSERT(offsetof(flatmap_t, size) == sizeof(Eterm));
+        Label is_hashmap = a.newLabel(), done = a.newLabel();
+
+        /* Load header into TMP4 (not TMP1) because boxed_ptr may
+         * alias TMP1 when emit_ptr_val returns src.reg unchanged. */
+        a.ldur(TMP4, emit_boxed_val(boxed_ptr));
+        a.tst(TMP4, imm(0x3 << _HEADER_ARITY_OFFS));
+        a.b_ne(is_hashmap);
+
+        /* Flatmap: size is encoded in header val bits */
+        a.lsr(TMP1, TMP4, imm(_HEADER_ARITY_OFFS + MAP_HEADER_TAG_SZ
+                               + MAP_HEADER_ARITY_SZ));
+        a.and_(TMP1, TMP1, imm(0xffff));
+        a.b(done);
+
+        a.bind(is_hashmap);
+        /* Hashmap: size is at word 1 */
+        ERTS_CT_ASSERT(offsetof(hashmap_head_t, size) == sizeof(Eterm));
         a.ldur(TMP1, emit_boxed_val(boxed_ptr, sizeof(Eterm)));
+
+        a.bind(done);
         mov_imm(dst.reg, _TAG_IMMED1_SMALL);
         a.bfi(dst.reg, TMP1, imm(_TAG_IMMED1_SIZE), imm(SMALL_BITS));
         flush_var(dst);

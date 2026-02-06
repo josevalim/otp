@@ -272,8 +272,7 @@ void BeamModuleAssembler::emit_i_new_small_map_lit(const ArgRegister &Dst,
 
     std::vector<ArgVal> data;
     data.reserve(args.size() + MAP_HEADER_FLATMAP_SZ + 1);
-    data.push_back(ArgWord(MAP_HEADER_FLATMAP));
-    data.push_back(Size);
+    data.push_back(ArgWord(make_flatmap_header(Size.get())));
     data.push_back(Keys);
 
     bool dst_is_src = false;
@@ -326,12 +325,15 @@ void BeamGlobalAssembler::emit_i_get_map_element_shared() {
     emit_untag_ptr(ARG1, ARG1);
 
     /* hashmap_get_element expects node header in ARG4, flatmap_get_element
-     * expects size in ARG5 */
-    ERTS_CT_ASSERT_FIELD_PAIR(flatmap_t, thing_word, size);
-    a.ldp(ARG4, ARG5, arm::Mem(ARG1));
+     * expects size in ARG5 (extracted from header val bits) */
+    a.ldr(ARG4, arm::Mem(ARG1));
     a.and_(TMP1, ARG4, imm(_HEADER_MAP_SUBTAG_MASK));
     a.cmp(TMP1, imm(HAMT_SUBTAG_HEAD_FLATMAP));
     a.b_ne(hashmap);
+
+    /* Extract size from flatmap header val bits */
+    a.lsr(ARG5, ARG4, imm(_HEADER_ARITY_OFFS + MAP_HEADER_TAG_SZ + MAP_HEADER_ARITY_SZ));
+    a.and_(ARG5, ARG5, imm(0xffff));
 
     emit_flatmap_get_element();
 
@@ -419,16 +421,17 @@ void BeamModuleAssembler::emit_i_get_map_elements(const ArgLabel &Fail,
 
         emit_untag_ptr(TMP1, ARG1);
 
-        ERTS_CT_ASSERT_FIELD_PAIR(flatmap_t, thing_word, size);
-        a.ldp(TMP2, TMP3, arm::Mem(TMP1, offsetof(flatmap_t, thing_word)));
-        a.and_(TMP2, TMP2, imm(_HEADER_MAP_SUBTAG_MASK));
-        a.cmp(TMP2, imm(HAMT_SUBTAG_HEAD_FLATMAP));
+        a.ldr(TMP2, arm::Mem(TMP1, offsetof(flatmap_t, thing_word)));
+        a.and_(TMP3, TMP2, imm(_HEADER_MAP_SUBTAG_MASK));
+        a.cmp(TMP3, imm(HAMT_SUBTAG_HEAD_FLATMAP));
         a.b_ne(generic);
 
         check_pending_stubs();
 
-        /* Bump size by 1 to slide past the `keys` field in the map, and the
-         * header word in the key array. */
+        /* Extract size from header val bits and bump by 1 to slide past
+         * the `keys` field in the map, and the header word in key array. */
+        a.lsr(TMP3, TMP2, imm(_HEADER_ARITY_OFFS + MAP_HEADER_TAG_SZ + MAP_HEADER_ARITY_SZ));
+        a.and_(TMP3, TMP3, imm(0xffff));
         a.add(TMP3, TMP3, imm(1));
 
         /* Adjust our map pointer to the `keys` field before loading it. This
@@ -498,12 +501,16 @@ void BeamGlobalAssembler::emit_i_get_map_element_hash_shared() {
     emit_untag_ptr(ARG1, ARG1);
 
     /* hashmap_get_element expects node header in ARG4, flatmap_get_element
-     * expects size in ARG5 */
-    ERTS_CT_ASSERT_FIELD_PAIR(flatmap_t, thing_word, size);
-    a.ldp(ARG4, ARG5, arm::Mem(ARG1));
+     * expects size in ARG5 (extracted from header val bits) */
+    a.ldr(ARG4, arm::Mem(ARG1));
     a.and_(TMP1, ARG4, imm(_HEADER_MAP_SUBTAG_MASK));
     a.cmp(TMP1, imm(HAMT_SUBTAG_HEAD_FLATMAP));
     a.b_ne(hashmap);
+
+    /* Extract size from flatmap header val bits */
+    a.lsr(ARG5, ARG4, imm(_HEADER_ARITY_OFFS + MAP_HEADER_TAG_SZ + MAP_HEADER_ARITY_SZ));
+    a.and_(ARG5, ARG5, imm(0xffff));
+
     emit_flatmap_get_element();
 
     a.bind(hashmap);

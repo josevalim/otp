@@ -735,12 +735,38 @@ void BeamModuleAssembler::emit_bif_map_size(const ArgLabel &Fail,
 
     a.bind(good_map);
     {
-        ERTS_CT_ASSERT(offsetof(flatmap_t, size) == sizeof(Eterm));
+        Label is_hashmap = a.newLabel(), done = a.newLabel();
+
         preserve_cache(
                 [&]() {
-                    a.mov(RET, emit_boxed_val(boxed_ptr, sizeof(Eterm)));
+                    a.mov(RET, emit_boxed_val(boxed_ptr, 0));
+                    a.test(RETd, imm(0x3 << _HEADER_ARITY_OFFS));
+                    a.jnz(is_hashmap);
+
+                    /* Flatmap: size is encoded in header val bits */
+                    a.shr(RET, imm(_HEADER_ARITY_OFFS + MAP_HEADER_TAG_SZ
+                                   + MAP_HEADER_ARITY_SZ));
+                    a.and_(RETd, imm(0xffff));
                     a.shl(RET, imm(4));
                     a.or_(RETb, imm(_TAG_IMMED1_SMALL));
+                    a.short_().jmp(done);
+
+                    a.bind(is_hashmap);
+                    /* Hashmap: size is at word 1. Reload the map
+                     * pointer since RET (boxed_ptr) was overwritten
+                     * with the header above. */
+                    ERTS_CT_ASSERT(offsetof(hashmap_head_t, size) ==
+                                   sizeof(Eterm));
+                    mov_arg(RET, Src);
+                    {
+                        auto hmap_ptr = emit_ptr_val(RET, RET);
+                        a.mov(RET,
+                              emit_boxed_val(hmap_ptr, sizeof(Eterm)));
+                    }
+                    a.shl(RET, imm(4));
+                    a.or_(RETb, imm(_TAG_IMMED1_SMALL));
+
+                    a.bind(done);
                 },
                 RET);
         mov_arg(Dst, RET);
