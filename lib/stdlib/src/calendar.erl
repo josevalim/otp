@@ -1022,7 +1022,7 @@ local_offset(SystemTime, Unit) ->
     UniversalSecs = datetime_to_gregorian_seconds(UniversalTime),
     LocalSecs - UniversalSecs.
 
-mod(N, D) ->
+mod(N, D) when D > 0 ->
     case N rem D of
 	R when R < 0 -> mod(R + D, D);
 	R -> R
