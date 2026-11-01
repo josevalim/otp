@@ -684,6 +684,52 @@ void BeamGlobalAssembler::emit_update_map_single_exact_body_shared() {
     }
 }
 
+/* TMP1 = untagged flat map
+ * TMP5 = size
+ *
+ * Copies the flat map to HTOP, sharing its keys, without bumping HTOP.
+ * Clobbers TMP3, ARG2, ARG5, ARG6, q30, and q31. */
+void BeamGlobalAssembler::emit_copy_flatmap_shared() {
+    Label no_single = a.new_label(), no_pair = a.new_label(),
+          copy = a.new_label(), copied = a.new_label();
+
+    /* Share the key tuple with the old map. */
+    ERTS_CT_ASSERT(offsetof(flatmap_t, thing_word) == 0);
+    ERTS_CT_ASSERT(offsetof(flatmap_t, keys) == 2 * sizeof(Eterm));
+    ERTS_CT_ASSERT(sizeof(flatmap_t) == 3 * sizeof(Eterm));
+    mov_imm(TMP3, MAP_HEADER_FLATMAP);
+    a.stp(TMP3, TMP5, a64::Mem(HTOP));
+    a.ldr(TMP3, a64::Mem(TMP1, offsetof(flatmap_t, keys)));
+    a.str(TMP3, a64::Mem(HTOP, offsetof(flatmap_t, keys)));
+
+    /* Copy all values. We must not over-read, as the old map may be a
+     * literal at the very end of a mapping. */
+    a.add(ARG5, TMP1, imm(sizeof(flatmap_t)));
+    a.add(ARG6, HTOP, imm(sizeof(flatmap_t)));
+    a.lsr(TMP3, TMP5, imm(2));
+
+    a.tbz(TMP5, imm(0), no_single);
+    a.ldr(ARG2, a64::Mem(ARG5).post(sizeof(Eterm)));
+    a.str(ARG2, a64::Mem(ARG6).post(sizeof(Eterm)));
+
+    a.bind(no_single);
+    a.tbz(TMP5, imm(1), no_pair);
+    a.ldr(a64::q30, a64::Mem(ARG5).post(sizeof(Eterm[2])));
+    a.str(a64::q30, a64::Mem(ARG6).post(sizeof(Eterm[2])));
+
+    a.bind(no_pair);
+    a.cbz(TMP3, copied);
+
+    a.bind(copy);
+    a.ldp(a64::q30, a64::q31, a64::Mem(ARG5).post(sizeof(Eterm[4])));
+    a.stp(a64::q30, a64::q31, a64::Mem(ARG6).post(sizeof(Eterm[4])));
+    a.subs(TMP3, TMP3, imm(1));
+    a.b_ne(copy);
+
+    a.bind(copied);
+    a.ret(a64::x30);
+}
+
 void BeamModuleAssembler::emit_update_map_exact(
         const ArgSource &Src,
         const ArgLabel &Fail,
@@ -789,9 +835,6 @@ void BeamModuleAssembler::emit_update_map_exact(
         /* Copy the map and resume at the store of the changed value. */
         a.bind(changed);
         {
-            Label no_single = a.new_label(), no_pair = a.new_label(),
-                  copy = a.new_label(), copied = a.new_label();
-
             /* ARG3 = HTOP + S_RESERVED + bytes needed, as expected by the GC
              * fragment. */
             a.add(ARG3, HTOP, TMP5, a64::lsl(3));
@@ -801,40 +844,7 @@ void BeamModuleAssembler::emit_update_map_exact(
             a.cmp(ARG3, E);
             a.b_hi(gc);
 
-            /* Share the key tuple with the old map. */
-            ERTS_CT_ASSERT(offsetof(flatmap_t, thing_word) == 0);
-            ERTS_CT_ASSERT(offsetof(flatmap_t, keys) == 2 * sizeof(Eterm));
-            ERTS_CT_ASSERT(sizeof(flatmap_t) == 3 * sizeof(Eterm));
-            mov_imm(TMP3, MAP_HEADER_FLATMAP);
-            a.stp(TMP3, TMP5, a64::Mem(HTOP));
-            a.ldr(TMP3, a64::Mem(TMP1, offsetof(flatmap_t, keys)));
-            a.str(TMP3, a64::Mem(HTOP, offsetof(flatmap_t, keys)));
-
-            /* Copy all values. We must not over-read, as the old map may be a
-             * literal at the very end of a mapping. */
-            a.add(ARG5, TMP1, imm(sizeof(flatmap_t)));
-            a.add(ARG6, HTOP, imm(sizeof(flatmap_t)));
-            a.lsr(TMP3, TMP5, imm(2));
-
-            a.tbz(TMP5, imm(0), no_single);
-            a.ldr(ARG2, a64::Mem(ARG5).post(sizeof(Eterm)));
-            a.str(ARG2, a64::Mem(ARG6).post(sizeof(Eterm)));
-
-            a.bind(no_single);
-            a.tbz(TMP5, imm(1), no_pair);
-            a.ldr(a64::q30, a64::Mem(ARG5).post(sizeof(Eterm[2])));
-            a.str(a64::q30, a64::Mem(ARG6).post(sizeof(Eterm[2])));
-
-            a.bind(no_pair);
-            a.cbz(TMP3, copied);
-
-            a.bind(copy);
-            a.ldp(a64::q30, a64::q31, a64::Mem(ARG5).post(sizeof(Eterm[4])));
-            a.stp(a64::q30, a64::q31, a64::Mem(ARG6).post(sizeof(Eterm[4])));
-            a.subs(TMP3, TMP3, imm(1));
-            a.b_ne(copy);
-
-            a.bind(copied);
+            fragment_call(ga->get_copy_flatmap_shared());
 
             /* Make TMP6 refer to the values of the new map instead. */
             a.add(TMP6, TMP6, HTOP);

@@ -707,6 +707,53 @@ void BeamGlobalAssembler::emit_update_map_single_exact_body_shared() {
     }
 }
 
+/* ARG2 = untagged flat map
+ * RET = size
+ *
+ * Copies the flat map to HTOP, sharing its keys, without bumping HTOP.
+ * Clobbers ARG1, ARG2, RET, TMP1, and xmm0. */
+void BeamGlobalAssembler::emit_copy_flatmap_shared() {
+    Label pairs = a.new_label(), copy = a.new_label(), copied = a.new_label();
+
+    /* Share the key tuple with the old map. */
+    ERTS_CT_ASSERT(offsetof(flatmap_t, thing_word) == 0);
+    ERTS_CT_ASSERT(offsetof(flatmap_t, size) == sizeof(Eterm));
+    ERTS_CT_ASSERT(offsetof(flatmap_t, keys) == 2 * sizeof(Eterm));
+    ERTS_CT_ASSERT(sizeof(flatmap_t) == 3 * sizeof(Eterm));
+    mov_imm(TMP1, MAP_HEADER_FLATMAP);
+    a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, thing_word)), TMP1);
+    a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, size)), RET);
+    a.mov(TMP1, x86::qword_ptr(ARG2, offsetof(flatmap_t, keys)));
+    a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, keys)), TMP1);
+
+    /* Copy all values. We must not over-read, as the old map may be a
+     * literal at the very end of a mapping. */
+    a.add(ARG2, imm(sizeof(flatmap_t)));
+    a.lea(ARG1, x86::qword_ptr(HTOP, sizeof(flatmap_t)));
+
+    a.test(RET, imm(1));
+    a.short_().jz(pairs);
+    a.mov(TMP1, x86::qword_ptr(ARG2));
+    a.add(ARG2, imm(sizeof(Eterm)));
+    a.mov(x86::qword_ptr(ARG1), TMP1);
+    a.add(ARG1, imm(sizeof(Eterm)));
+
+    a.bind(pairs);
+    a.shr(RET, imm(1));
+    a.short_().jz(copied);
+
+    a.bind(copy);
+    vmovups(x86::xmm0, x86::xmmword_ptr(ARG2));
+    vmovups(x86::xmmword_ptr(ARG1), x86::xmm0);
+    a.add(ARG2, imm(sizeof(Eterm[2])));
+    a.add(ARG1, imm(sizeof(Eterm[2])));
+    a.dec(RET);
+    a.short_().jnz(copy);
+
+    a.bind(copied);
+    a.ret();
+}
+
 void BeamModuleAssembler::emit_update_map_exact(
         const ArgSource &Src,
         const ArgLabel &Fail,
@@ -821,9 +868,6 @@ void BeamModuleAssembler::emit_update_map_exact(
         /* Copy the map and resume at the store of the changed value. */
         a.bind(changed);
         {
-            Label pairs = a.new_label(), copy = a.new_label(),
-                  copied = a.new_label();
-
             a.mov(RET, x86::qword_ptr(ARG2, offsetof(flatmap_t, size)));
 
             /* ARG3 = HTOP + S_RESERVED + bytes needed, as expected by the GC
@@ -837,42 +881,7 @@ void BeamModuleAssembler::emit_update_map_exact(
             a.cmp(ARG3, E);
             a.ja(gc);
 
-            /* Share the key tuple with the old map. */
-            ERTS_CT_ASSERT(offsetof(flatmap_t, thing_word) == 0);
-            ERTS_CT_ASSERT(offsetof(flatmap_t, size) == sizeof(Eterm));
-            ERTS_CT_ASSERT(offsetof(flatmap_t, keys) == 2 * sizeof(Eterm));
-            ERTS_CT_ASSERT(sizeof(flatmap_t) == 3 * sizeof(Eterm));
-            mov_imm(TMP1, MAP_HEADER_FLATMAP);
-            a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, thing_word)), TMP1);
-            a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, size)), RET);
-            a.mov(TMP1, x86::qword_ptr(ARG2, offsetof(flatmap_t, keys)));
-            a.mov(x86::qword_ptr(HTOP, offsetof(flatmap_t, keys)), TMP1);
-
-            /* Copy all values. We must not over-read, as the old map may be a
-             * literal at the very end of a mapping. */
-            a.add(ARG2, imm(sizeof(flatmap_t)));
-            a.lea(ARG1, x86::qword_ptr(HTOP, sizeof(flatmap_t)));
-
-            a.test(RET, imm(1));
-            a.short_().jz(pairs);
-            a.mov(TMP1, x86::qword_ptr(ARG2));
-            a.add(ARG2, imm(sizeof(Eterm)));
-            a.mov(x86::qword_ptr(ARG1), TMP1);
-            a.add(ARG1, imm(sizeof(Eterm)));
-
-            a.bind(pairs);
-            a.shr(RET, imm(1));
-            a.short_().jz(copied);
-
-            a.bind(copy);
-            vmovups(x86::xmm0, x86::xmmword_ptr(ARG2));
-            vmovups(x86::xmmword_ptr(ARG1), x86::xmm0);
-            a.add(ARG2, imm(sizeof(Eterm[2])));
-            a.add(ARG1, imm(sizeof(Eterm[2])));
-            a.dec(RET);
-            a.short_().jnz(copy);
-
-            a.bind(copied);
+            fragment_call(ga->get_copy_flatmap_shared());
             a.jmp(ARG6);
         }
 
